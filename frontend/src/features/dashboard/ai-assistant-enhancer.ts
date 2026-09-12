@@ -13,6 +13,7 @@ type SpeechRecognitionCtor = new () => any;
 
 const CHAT_HISTORY_KEY = 'jalrakshak:citizen-ai-history:v1';
 const WELCOME_TEXT = 'Hi, I’m NavCat. I’m here to help you stay safe. I can check your current risk, find a safer place, guide you there, or help you reach emergency support. What can I help you with?';
+const NAVCAT_OVERLAY_ID = 'jalrakshak-navcat-overlay';
 
 let latestRoute: EvacuationRoute | null = null;
 let latestSafety: SafetyContext | null = null;
@@ -73,7 +74,7 @@ async function refreshContext() {
     }
   }
   try {
-    const records = await citizenSafetyApi.listEmergencies();
+    const records = await citizenSafetyApi.listEmerencies?.() ?? await citizenSafetyApi.listEmergencies();
     latestEmergency = records
       .filter((item) => !item.is_demo && item.status !== 'cancelled')
       .sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at))[0] ?? null;
@@ -124,7 +125,7 @@ function quickActions() {
 function renderAssistant(section: HTMLElement) {
   const focused = document.activeElement?.matches?.('[data-ai-input]') ?? false;
   const draft = document.querySelector<HTMLInputElement>('[data-ai-input]')?.value ?? '';
-  section.className = `citizen-ai-screen ${crisisMode ? 'crisis-mode' : ''}`;
+  section.className = `citizen-ai-screen navcat-overlay-screen ${crisisMode ? 'crisis-mode' : ''}`;
   section.innerHTML = `
     <div class="ai-header">
       <div class="ai-history-controls"></div>
@@ -170,11 +171,7 @@ function executeResultAction(action: string, phone?: string) {
     return;
   }
   if (action === 'open_map') {
-    const opened = clickSidebarNav('Live Map');
-    if (!opened) return;
-    // Do not immediately fire another synthetic click while React is changing screens.
-    // If GPS was already captured, the Live Map effect loads the route automatically.
-    // If not, the map stays stable and the user can explicitly grant location permission.
+    clickSidebarNav('Live Map');
     return;
   }
   if (action === 'call' && phone) {
@@ -269,21 +266,56 @@ function wireAssistant(section: HTMLElement) {
   }));
 }
 
+function removeNavCatOverlay() {
+  document.getElementById(NAVCAT_OVERLAY_ID)?.remove();
+}
+
+function getOrCreateNavCatOverlay(placeholder: HTMLElement) {
+  let overlay = document.getElementById(NAVCAT_OVERLAY_ID) as HTMLElement | null;
+  if (!overlay) {
+    overlay = document.createElement('section');
+    overlay.id = NAVCAT_OVERLAY_ID;
+    document.body.appendChild(overlay);
+  }
+
+  const rect = placeholder.getBoundingClientRect();
+  Object.assign(overlay.style, {
+    position: 'fixed',
+    left: `${Math.max(0, rect.left)}px`,
+    top: `${Math.max(0, rect.top)}px`,
+    width: `${Math.max(320, rect.width)}px`,
+    height: `${Math.max(320, window.innerHeight - Math.max(0, rect.top))}px`,
+    zIndex: '30',
+    overflow: 'auto',
+    background: '#fbf7ef',
+  });
+  return overlay;
+}
+
 function maybeEnhanceAssistant() {
   const placeholder = document.querySelector<HTMLElement>('.figma-placeholder-panel');
-  if (placeholder?.querySelector('h2')?.textContent?.trim() === 'AI Assistant') {
-    void refreshContext().finally(() => renderAssistant(placeholder));
+  const onAssistant = placeholder?.querySelector('h2')?.textContent?.trim() === 'AI Assistant';
+
+  if (onAssistant && placeholder) {
+    const overlay = getOrCreateNavCatOverlay(placeholder);
+    void refreshContext().finally(() => {
+      if (document.body.contains(placeholder)) renderAssistant(overlay);
+    });
     if (refreshTimer == null) refreshTimer = window.setInterval(() => void refreshContext(), 12_000);
     return;
   }
-  if (!document.querySelector('.citizen-ai-screen') && refreshTimer != null) {
+
+  removeNavCatOverlay();
+  if (refreshTimer != null) {
     window.clearInterval(refreshTimer);
     refreshTimer = null;
   }
 }
 
+window.addEventListener('resize', () => maybeEnhanceAssistant());
+
 window.addEventListener('jalrakshak:navcat-new-chat', () => {
-  const section = document.querySelector<HTMLElement>('.citizen-ai-screen');
+  const section = document.getElementById(NAVCAT_OVERLAY_ID) as HTMLElement | null;
   if (!section) return;
   messages = [];
   crisisMode = false;
@@ -294,7 +326,7 @@ window.addEventListener('jalrakshak:navcat-new-chat', () => {
 });
 
 window.addEventListener('jalrakshak:navcat-load-session', (event) => {
-  const section = document.querySelector<HTMLElement>('.citizen-ai-screen');
+  const section = document.getElementById(NAVCAT_OVERLAY_ID) as HTMLElement | null;
   if (!section) return;
   const detail = (event as CustomEvent<{ messages?: Message[] }>).detail;
   const incoming = Array.isArray(detail?.messages) ? detail.messages : [];
