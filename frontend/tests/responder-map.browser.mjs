@@ -118,16 +118,16 @@ try {
   assert.ok(projection < 2, 'Hazard icon must be anchored to its GPS position');
   console.log('PASS geographic marker alignment and polling preserves user viewport');
 
-  for (const view of ['dashboard', 'map', 'queue', 'dashboard', 'reports', 'settings', 'chat', 'dashboard', 'map']) {
+  for (const view of ['dashboard', 'map', 'queue', 'dashboard', 'reports', 'settings', 'dashboard', 'map']) {
     await nav(view).click(); await assertView(view);
     if (view === 'dashboard') await page.waitForSelector('[data-admin-dashboard]');
-    else if (['reports', 'settings', 'chat'].includes(view)) await page.waitForSelector(`[data-worker-static-view="${view}"] h1`);
+    else if (['reports', 'settings'].includes(view)) await page.waitForSelector(`[data-worker-static-view="${view}"] h1`);
     else if (view === 'map') await page.waitForFunction(() => Boolean(document.querySelector('[data-responder-map]')?.responderMap));
     else await page.waitForSelector('.ops-queue-pane');
   }
   await page.waitForTimeout(5600); await assertView('map');
   assert.equal(await page.locator('.leaflet-container').count(), 1);
-  console.log('PASS single sidebar selection, all six views, map teardown/remount and poll');
+  console.log('PASS single sidebar selection, all five views, map teardown/remount and poll');
 
   await page.evaluate(record => {
     sessionStorage.setItem('jalrakshak:responder-route-handoff', JSON.stringify({ incidentId: record.id, responderPosition: { latitude: record.latitude, longitude: record.longitude - .005 }, updatedAt: new Date().toISOString(), candidates: [{ distanceM: 500, durationS: 120, geometry: [[record.longitude - .005, record.latitude], [record.longitude, record.latitude]], safetyScore: 0, status: 'rejected', reason: 'Test rejected route' }] }));

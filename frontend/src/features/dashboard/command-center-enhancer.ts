@@ -69,13 +69,12 @@ function relabelWorkerShell() {
 
 function renderStaticView(kind: string) {
   const view = document.querySelector<HTMLElement>('[data-worker-static-view]');
-  if (!view || !['chat', 'reports', 'settings'].includes(kind)) return;
+  if (!view || !['reports', 'settings'].includes(kind)) return;
   const key = kind + JSON.stringify(latestRecords);
   if (view.dataset.renderKey === key) return;
   view.dataset.renderKey = key;
   const active = activeRecords();
-  if (kind === 'chat') view.innerHTML = `<header><span>NAVCAT · ADMIN</span><h1>Operational AI Assistant</h1><p>Admin NavCat will reuse the citizen engine with role-scoped operational tools.</p></header><div class="command-center-coming-soon">Next: summarize SOS, rank incidents, locate citizens, inspect hazards, and prepare responder routes.</div>`;
-  else if (kind === 'reports') view.innerHTML = `<header><span>REPORTS</span><h1>Operational reporting</h1><p>Current backend snapshot.</p></header><div class="command-center-dashboard-metrics"><div><span>TOTAL</span><strong>${latestRecords.length}</strong></div><div><span>ACTIVE</span><strong>${active.length}</strong></div><div><span>RESOLVED</span><strong>${latestRecords.filter(r => r.status === 'resolved').length}</strong></div><div><span>LIVE SOURCE</span><strong>${latestRecords.filter(r => !r.is_demo).length}</strong></div></div>`;
+  if (kind === 'reports') view.innerHTML = `<header><span>REPORTS</span><h1>Operational reporting</h1><p>Current backend snapshot.</p></header><div class="command-center-dashboard-metrics"><div><span>TOTAL</span><strong>${latestRecords.length}</strong></div><div><span>ACTIVE</span><strong>${active.length}</strong></div><div><span>RESOLVED</span><strong>${latestRecords.filter(r => r.status === 'resolved').length}</strong></div><div><span>LIVE SOURCE</span><strong>${latestRecords.filter(r => !r.is_demo).length}</strong></div></div>`;
   else view.innerHTML = `<header><span>SETTINGS</span><h1>Admin settings</h1><p>Role permissions, alert thresholds, integrations, and audit controls will be finalized during the security pass.</p></header>`;
 }
 

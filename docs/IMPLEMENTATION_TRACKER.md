@@ -7,7 +7,11 @@ Branch: `feature/login-page-ui`.
 - Stages 1–3: existing Incident Queue, lifecycle sync, and navigation persistence retained. User reported the working flow; this change does not claim a full re-test of those stages.
 - Stage 4: shared-hazard save and citizen marker confirmed on the user's installation. The responder Live Map/navigation repair below completes the missing map integration; its browser regressions pass in isolation.
 - Stage 5: next — complete automatic reroute coordination, backend route invalidation, and responder/citizen notifications.
-- Stages 6–20: pending in the user's original priority order. The responder incident/hazard Live Map is now geographic; official county flood/shelter feeds and operational NavCat remain later work.
+- Stages 6–20: pending in the user's original priority order, with the scope change below. The responder incident/hazard Live Map is now geographic; official county flood/shelter feeds remain later work.
+
+## Current scope change
+
+At the user's request, remove the admin/responder AI Assistant sidebar item and its placeholder page. Admin NavCat is removed from the remaining implementation scope. The five admin views are Dashboard, Live Map, Incident Queue, Reports and Settings. Citizen NavCat and the existing incident guidance card are retained. The browser navigation check now covers these five views.
 
 ## Stage 4 changes
 
