@@ -1,21 +1,34 @@
 import { useMemo, useState } from 'react';
 import { authSession } from '../../auth/auth-session';
 
-const riskCards = [
-  { label: 'Flood risk', value: 'HIGH', meta: 'River level rising', tone: 'danger' },
-  { label: 'Rainfall', value: '78 mm', meta: 'Last 6 hours', tone: 'neutral' },
-  { label: 'Nearest safe zone', value: '1.8 km', meta: 'Community Hall B', tone: 'safe' },
-  { label: 'Road status', value: '2 blocked', meta: 'Route updated', tone: 'warning' },
+type NavItem = 'Overview' | 'Live Map' | 'Alerts' | 'AI Assistant' | 'Emergency Help' | 'Recovery';
+
+const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: boolean }> = [
+  { label: 'Overview', icon: '▦' },
+  { label: 'Live Map', icon: '◫' },
+  { label: 'Alerts', icon: '♢', badge: 2 },
+  { label: 'AI Assistant', icon: '▤' },
+  { label: 'Emergency Help', icon: '⊙' },
+  { label: 'Recovery', icon: '◷', muted: true },
 ];
 
 export default function CitizenDashboard() {
   const session = authSession.get();
-  const [sosSent, setSosSent] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavItem>('Overview');
+  const [showCriticalAlert, setShowCriticalAlert] = useState(true);
+  const [helpRequested, setHelpRequested] = useState(false);
 
-  const firstName = useMemo(() => {
-    const name = session?.user.name?.trim() || 'Citizen';
-    return name.split(' ')[0];
+  const displayName = useMemo(() => {
+    const name = session?.user.name?.trim();
+    return name && name !== 'Demo Citizen' ? name : 'Ramesh K.';
   }, [session?.user.name]);
+
+  const initials = displayName
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 1)
+    .toUpperCase();
 
   const signOut = () => {
     authSession.clear();
@@ -23,115 +36,170 @@ export default function CitizenDashboard() {
     window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
+  const requestHelp = () => {
+    setHelpRequested(true);
+    setShowCriticalAlert(false);
+    setActiveNav('Emergency Help');
+  };
+
+  const renderOverview = () => (
+    <>
+      <div className="figma-confidence-strip">
+        <span className="confidence-dot" />
+        <strong>HIGH CONFIDENCE</strong>
+        <span>+9m</span>
+        <span>·</span>
+        <span>12 sec ago</span>
+      </div>
+
+      <section className="figma-risk-card">
+        <div className="figma-risk-header">
+          <div><span className="risk-header-dot" /> CRITICAL · FLOOD RISK</div>
+          <span>Risk increasing rapidly</span>
+        </div>
+        <div className="figma-risk-body">
+          <div className="warning-window">
+            <span>ESTIMATED WARNING WINDOW</span>
+            <strong>~58 min</strong>
+            <p>Act before this window closes</p>
+          </div>
+          <div className="risk-score-ring" aria-label="Flood risk score 87 out of 100">
+            <div><strong>87</strong><span>/ 100</span></div>
+          </div>
+          <div className="risk-score-label">FLOOD RISK</div>
+        </div>
+        <div className="risk-divider" />
+        <div className="factor-section">
+          <span className="factor-title">CONTRIBUTING FACTORS</span>
+          <div className="factor-row"><span>🌧️</span><strong>Heavy forecast rainfall</strong><em>+48mm in 6 hrs</em></div>
+          <div className="factor-row"><span>🌊</span><strong>Rising river level</strong><em>Bagmati +1.2m since 06:00</em></div>
+          <div className="factor-row"><span>🚧</span><strong>Road access degrading</strong><em>2 routes blocked</em></div>
+        </div>
+      </section>
+
+      <section className="figma-safe-card">
+        <div className="safe-card-top">
+          <div>
+            <span className="safe-eyebrow">RECOMMENDED SAFE DESTINATION</span>
+            <h2>Shree Secondary School</h2>
+            <p>◷ 13 min &nbsp;&nbsp; 920 m &nbsp;&nbsp; Capacity 61%</p>
+          </div>
+          <span className="low-risk-pill">LOW RISK</span>
+        </div>
+        <div className="safe-capacity-track"><span /></div>
+        <div className="safe-actions">
+          <button type="button" className="figma-primary" onClick={() => setShowCriticalAlert(false)}>GUIDE ME</button>
+          <button type="button" className="figma-secondary">WHY THIS?</button>
+        </div>
+      </section>
+
+      <section className="figma-quick-card">
+        <span className="quick-title">QUICK ACTIONS</span>
+        <div>
+          <button type="button" onClick={() => setActiveNav('Live Map')}>🗺️ <span>View Safety Map</span></button>
+          <button type="button">🏫 <span>All Destinations</span></button>
+        </div>
+      </section>
+    </>
+  );
+
+  const renderSecondaryPanel = () => (
+    <section className="figma-placeholder-panel">
+      <span className="safe-eyebrow">{activeNav.toUpperCase()}</span>
+      <h2>{activeNav}</h2>
+      <p>
+        {activeNav === 'Emergency Help'
+          ? helpRequested
+            ? 'Your demo help request has been recorded. A responder workflow will be connected next.'
+            : 'Use this screen to request rescue, medical assistance, or evacuation support.'
+          : `${activeNav} is the next Citizen module to connect. The application shell and navigation are now in place.`}
+      </p>
+      {activeNav === 'Emergency Help' && !helpRequested && (
+        <button type="button" className="figma-danger-button" onClick={requestHelp}>REQUEST EMERGENCY HELP</button>
+      )}
+      <button type="button" className="figma-secondary back-overview" onClick={() => setActiveNav('Overview')}>Back to overview</button>
+    </section>
+  );
+
   return (
-    <main className="citizen-shell">
-      <header className="citizen-topbar">
-        <div>
-          <div className="citizen-brand">G-0ne</div>
-          <p>Citizen safety workspace</p>
+    <main className="figma-citizen-app">
+      <aside className="figma-sidebar">
+        <div className="sidebar-brand-row">
+          <div className="sidebar-logo">⌄</div>
+          <div>
+            <strong>JalRakshak</strong>
+            <span>Citizen Safety</span>
+          </div>
+          <button type="button" className="collapse-button" aria-label="Collapse navigation">‹</button>
         </div>
-        <div className="citizen-topbar-actions">
-          <span className="live-pill"><i /> Live monitoring</span>
-          <button type="button" className="ghost-button" onClick={signOut}>Sign out</button>
-        </div>
-      </header>
 
-      <section className="citizen-hero">
-        <div>
-          <p className="citizen-kicker">GOOD MORNING, {firstName.toUpperCase()}</p>
-          <h1>Your area is under a <span>high flood warning.</span></h1>
-          <p className="citizen-lead">G-0ne is monitoring rainfall, river levels, road closures, and nearby safe zones to help you make the safest next move.</p>
+        <div className="citizen-badge">CITIZEN</div>
+
+        <nav className="figma-nav" aria-label="Citizen navigation">
+          {navItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className={`${activeNav === item.label ? 'active' : ''} ${item.label === 'Emergency Help' ? 'emergency-nav' : ''} ${item.muted ? 'muted-nav' : ''}`}
+              onClick={() => setActiveNav(item.label)}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              <span>{item.label}</span>
+              {item.badge ? <b>{item.badge}</b> : null}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-user">
+          <div className="user-avatar">{initials}</div>
+          <div>
+            <strong>{displayName}</strong>
+            <span>Citizen User</span>
+          </div>
+          <button type="button" onClick={signOut} title="Sign out">↪</button>
         </div>
-        <div className="risk-badge">
-          <span>Risk level</span>
-          <strong>HIGH</strong>
-          <small>Updated just now</small>
+      </aside>
+
+      <section className="figma-main-shell">
+        <header className="figma-topbar">
+          <div className="location-line">⌖ &nbsp; Bagmati Valley, Sindhupalchowk &nbsp;·&nbsp; 12 Sept 2026 &nbsp;·&nbsp; 03:17 NPT</div>
+          <div className="topbar-controls">
+            <span className="live-status"><i /><i /> LIVE</span>
+            <button type="button" className="topbar-icon" aria-label="Notifications">♢<b>1</b></button>
+            <button type="button" className="language-button">EN</button>
+            <span className="topbar-avatar">{initials}</span>
+          </div>
+        </header>
+
+        <div className="figma-page-content">
+          {activeNav === 'Overview' ? renderOverview() : renderSecondaryPanel()}
         </div>
       </section>
 
-      <section className="citizen-stats" aria-label="Current flood conditions">
-        {riskCards.map((card) => (
-          <article key={card.label} className={`citizen-stat citizen-stat--${card.tone}`}>
-            <p>{card.label}</p>
-            <strong>{card.value}</strong>
-            <span>{card.meta}</span>
-          </article>
-        ))}
-      </section>
-
-      <section className="citizen-grid">
-        <article className="dashboard-card warning-card">
-          <div className="card-heading-row">
-            <div>
-              <span className="section-label">ACTIVE WARNING</span>
-              <h2>Flash flood risk increasing</h2>
+      {showCriticalAlert && activeNav === 'Overview' && (
+        <div className="critical-modal-backdrop" role="presentation">
+          <section className="critical-modal" role="dialog" aria-modal="true" aria-labelledby="critical-alert-title">
+            <div className="critical-modal-accent" />
+            <div className="critical-modal-title-row">
+              <div className="critical-icon">△</div>
+              <div>
+                <span>CRITICAL FLOOD WARNING</span>
+                <h2 id="critical-alert-title">Your area has entered a critical flood-risk state</h2>
+              </div>
             </div>
-            <span className="severity-chip">HIGH</span>
-          </div>
-          <p className="card-copy">Heavy rainfall upstream is causing rapid water-level increases. Low-lying roads may become unsafe with little notice.</p>
-          <div className="warning-details">
-            <div><span>Expected impact</span><strong>Next 30–60 min</strong></div>
-            <div><span>Primary concern</span><strong>Road flooding</strong></div>
-            <div><span>Recommended action</span><strong>Prepare to evacuate</strong></div>
-          </div>
-          <button type="button" className="secondary-button">View warning details</button>
-        </article>
-
-        <article className="dashboard-card safe-zone-card">
-          <span className="section-label">BEST SAFE ZONE</span>
-          <h2>Community Hall B</h2>
-          <p className="safe-zone-distance">1.8 km away · about 6 min</p>
-          <div className="capacity-row">
-            <div><span>Capacity</span><strong>62%</strong></div>
-            <div className="capacity-track"><span /></div>
-          </div>
-          <ul className="facility-list">
-            <li>Medical support</li>
-            <li>Food & water</li>
-            <li>Backup power</li>
-          </ul>
-          <button type="button" className="primary-button">Start evacuation route →</button>
-        </article>
-
-        <article className="dashboard-card map-card">
-          <div className="card-heading-row">
-            <div>
-              <span className="section-label">LIVE SAFETY MAP</span>
-              <h2>Route conditions around you</h2>
+            <div className="critical-score-box">
+              <div><span>RISK SCORE</span><strong>87</strong></div>
+              <div><span>UPDATED</span><strong>just now</strong></div>
             </div>
-            <button type="button" className="text-button">Open full map</button>
-          </div>
-          <div className="demo-map" role="img" aria-label="Demo map showing flood zones, user location, safe zone and blocked roads">
-            <div className="map-river" />
-            <div className="flood-zone flood-zone-a" />
-            <div className="flood-zone flood-zone-b" />
-            <div className="route-line" />
-            <span className="map-marker user-marker">You</span>
-            <span className="map-marker shelter-marker">Safe zone</span>
-            <span className="map-marker blocked-marker">Blocked</span>
-          </div>
-          <div className="map-legend">
-            <span><i className="legend-dot legend-user" />Your location</span>
-            <span><i className="legend-dot legend-flood" />Flood risk</span>
-            <span><i className="legend-dot legend-safe" />Safe zone</span>
-          </div>
-        </article>
-
-        <article className="dashboard-card sos-card">
-          <span className="section-label">EMERGENCY HELP</span>
-          <h2>{sosSent ? 'Help request sent' : 'Need rescue or urgent assistance?'}</h2>
-          <p className="card-copy">{sosSent ? 'Your location and account details have been attached to the request. An emergency worker can now assign a responder.' : 'Send your location to the emergency queue if you are trapped, injured, or cannot safely evacuate.'}</p>
-          {sosSent ? (
-            <div className="sos-status">
-              <span className="status-pulse" />
-              <div><strong>Request received</strong><small>Waiting for responder assignment</small></div>
+            <p className="critical-copy"><strong>Recommended action:</strong> Begin evacuation toward your assigned safe destination immediately.</p>
+            <button type="button" className="critical-guide" onClick={() => setShowCriticalAlert(false)}>GUIDE ME</button>
+            <div className="critical-actions">
+              <button type="button" className="critical-help" onClick={requestHelp}>I NEED HELP</button>
+              <button type="button" className="critical-details" onClick={() => setShowCriticalAlert(false)}>View Details</button>
             </div>
-          ) : (
-            <button type="button" className="sos-button" onClick={() => setSosSent(true)}>Send SOS request</button>
-          )}
-          <p className="demo-note">Demo mode: no real emergency service is contacted.</p>
-        </article>
-      </section>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
