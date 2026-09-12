@@ -5,7 +5,7 @@ from enum import Enum
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -39,10 +39,19 @@ class EmergencyCreate(BaseModel):
     river_discharge_m3s: float | None = None
 
 
+class EmergencyUpdate(BaseModel):
+    status: EmergencyStatus
+    responder_id: str | None = None
+    responder_name: str | None = None
+
+
 class EmergencyRecord(EmergencyCreate):
     id: str
     status: EmergencyStatus
     created_at: str
+    updated_at: str | None = None
+    responder_id: str | None = None
+    responder_name: str | None = None
 
 
 _records: list[EmergencyRecord] = []
@@ -51,11 +60,13 @@ _lock = Lock()
 
 @router.post("", response_model=EmergencyRecord, status_code=201)
 def create_emergency(payload: EmergencyCreate) -> EmergencyRecord:
+    now = datetime.now(timezone.utc).isoformat()
     record = EmergencyRecord(
         **payload.model_dump(),
         id=f"SOS-{uuid4().hex[:8].upper()}",
         status=EmergencyStatus.submitted,
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=now,
+        updated_at=now,
     )
     with _lock:
         _records.insert(0, record)
@@ -64,6 +75,22 @@ def create_emergency(payload: EmergencyCreate) -> EmergencyRecord:
 
 @router.get("", response_model=list[EmergencyRecord])
 def list_emergencies() -> list[EmergencyRecord]:
-    # In-memory hackathon queue. Replace with Postgres before production.
     with _lock:
         return list(_records)
+
+
+@router.patch("/{emergency_id}", response_model=EmergencyRecord)
+def update_emergency(emergency_id: str, payload: EmergencyUpdate) -> EmergencyRecord:
+    with _lock:
+        for index, record in enumerate(_records):
+            if record.id != emergency_id:
+                continue
+            updated = record.model_copy(update={
+                "status": payload.status,
+                "responder_id": payload.responder_id if payload.responder_id is not None else record.responder_id,
+                "responder_name": payload.responder_name if payload.responder_name is not None else record.responder_name,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            _records[index] = updated
+            return updated
+    raise HTTPException(status_code=404, detail="Emergency request not found")
