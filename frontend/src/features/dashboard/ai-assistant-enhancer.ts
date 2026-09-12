@@ -64,6 +64,27 @@ function startVoice(section:HTMLElement){const w=window as any,R=(w.SpeechRecogn
 function wireAssistant(section:HTMLElement){section.querySelector<HTMLFormElement>('.ai-input-row')?.addEventListener('submit',e=>{e.preventDefault();const i=section.querySelector<HTMLInputElement>('[data-ai-input]');if(i)void addUserMessage(section,i.value);});section.querySelector<HTMLButtonElement>('[data-ai-mic]')?.addEventListener('click',()=>startVoice(section));section.querySelector<HTMLButtonElement>('[data-ai-voice]')?.addEventListener('click',()=>{voiceEnabled=!voiceEnabled;if(!voiceEnabled&&'speechSynthesis'in window)window.speechSynthesis.cancel();renderAssistant(section);});section.querySelector<HTMLButtonElement>('[data-ai-clear]')?.addEventListener('click',()=>clearChat(section));section.querySelectorAll<HTMLButtonElement>('[data-ai-delete]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.aiDelete)deleteMessage(section,b.dataset.aiDelete);}));section.querySelectorAll<HTMLButtonElement>('[data-ai-quick]').forEach(b=>b.addEventListener('click',()=>{const p:Record<string,string>={risk:'Am I safe right now?',route:'Find me the safest route from my current location.',explain:'Why did you choose this route?',weather:'Is the rain dangerous right now?',responder:'What is my responder status?',scared:"I'm scared.",stuck:"I'm stuck and can't evacuate.",medical:'I need medical help.',guide:'Guide me to safety.'};void addUserMessage(section,p[b.dataset.aiQuick??'']??'');}));}
 function maybeEnhanceAssistant(){const p=document.querySelector<HTMLElement>('.figma-placeholder-panel');if(p?.querySelector('h2')?.textContent?.trim()==='AI Assistant'){void refreshContext().finally(()=>renderAssistant(p));if(refreshTimer==null)refreshTimer=window.setInterval(()=>void refreshContext(),12000);return;}if(!document.querySelector('.citizen-ai-screen')&&refreshTimer!=null){clearInterval(refreshTimer);refreshTimer=null;}}
 
+window.addEventListener('jalrakshak:navcat-new-chat',()=>{
+ const section=document.querySelector<HTMLElement>('.citizen-ai-screen');
+ if(!section)return;
+ messages=[];
+ crisisMode=false;
+ saveHistory();
+ if('speechSynthesis'in window)window.speechSynthesis.cancel();
+ renderAssistant(section);
+});
+
+window.addEventListener('jalrakshak:navcat-load-session',(event)=>{
+ const section=document.querySelector<HTMLElement>('.citizen-ai-screen');
+ if(!section)return;
+ const detail=(event as CustomEvent<{messages?:Message[]}>).detail;
+ const incoming=Array.isArray(detail?.messages)?detail.messages:[];
+ messages=incoming.filter((m)=>m&&(m.role==='assistant'||m.role==='user')&&typeof m.text==='string').map((m)=>({id:m.id||`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,role:m.role,text:m.text,createdAt:m.createdAt||Date.now()}));
+ crisisMode=false;
+ saveHistory();
+ renderAssistant(section);
+});
+
 window.addEventListener('jalrakshak:route-analysis',(event)=>{
  const next=(event as CustomEvent<EvacuationRoute>).detail;
  if(next) latestRoute=next;
