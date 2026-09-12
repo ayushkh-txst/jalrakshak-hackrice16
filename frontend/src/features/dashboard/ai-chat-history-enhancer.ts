@@ -18,7 +18,9 @@ function uid() {
 function readMessages(): StoredMessage[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(ACTIVE_HISTORY_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((m) => m && (m.role === 'assistant' || m.role === 'user') && typeof m.text === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((m) => m && (m.role === 'assistant' || m.role === 'user') && typeof m.text === 'string')
+      : [];
   } catch {
     return [];
   }
@@ -34,13 +36,17 @@ function readSessions(): ChatSession[] {
 }
 
 function saveSessions(sessions: ChatSession[]) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(sessions.slice(0, 20)));
+  localStorage.setItem(SESSION_KEY, JSON.stringify(sessions.slice(0, 30)));
 }
 
 function titleFrom(messages: StoredMessage[]) {
   const firstUser = messages.find((m) => m.role === 'user')?.text?.trim();
   if (!firstUser) return 'New chat';
-  return firstUser.length > 34 ? `${firstUser.slice(0, 34).trim()}…` : firstUser;
+  return firstUser.length > 38 ? `${firstUser.slice(0, 38).trim()}…` : firstUser;
+}
+
+function hasUserMessage(messages: StoredMessage[]) {
+  return messages.some((message) => message.role === 'user' && message.text.trim().length > 0);
 }
 
 function ensureActiveSession() {
@@ -76,7 +82,15 @@ function syncActiveSession() {
 
 function newChat() {
   syncActiveSession();
-  const sessions = readSessions();
+  let sessions = readSessions();
+  const currentId = localStorage.getItem(ACTIVE_SESSION_KEY);
+  const current = sessions.find((session) => session.id === currentId);
+
+  // Do not clutter history with unused blank chats.
+  if (current && !hasUserMessage(current.messages ?? [])) {
+    sessions = sessions.filter((session) => session.id !== current.id);
+  }
+
   const id = uid();
   sessions.unshift({ id, title: 'New chat', messages: [], updatedAt: Date.now() });
   saveSessions(sessions);
@@ -85,10 +99,7 @@ function newChat() {
   sessionStorage.removeItem(DRAFT_KEY);
   draft = '';
   historyOpen = false;
-
-  const clear = document.querySelector<HTMLButtonElement>('[data-ai-clear]');
-  if (clear) clear.click();
-  else window.location.reload();
+  window.location.reload();
 }
 
 function openSession(id: string) {
@@ -99,12 +110,14 @@ function openSession(id: string) {
   localStorage.setItem(ACTIVE_HISTORY_KEY, JSON.stringify(session.messages ?? []));
   sessionStorage.removeItem(DRAFT_KEY);
   draft = '';
+  historyOpen = false;
   window.location.reload();
 }
 
 function deleteSession(id: string) {
   const activeId = ensureActiveSession();
   let sessions = readSessions().filter((s) => s.id !== id);
+
   if (id === activeId) {
     const next = sessions[0] ?? { id: uid(), title: 'New chat', messages: [], updatedAt: Date.now() };
     if (!sessions.length) sessions = [next];
@@ -114,6 +127,7 @@ function deleteSession(id: string) {
     window.location.reload();
     return;
   }
+
   saveSessions(sessions);
   const controls = document.querySelector<HTMLElement>('.ai-history-controls');
   if (controls) delete controls.dataset.navcatHistorySignature;
@@ -124,10 +138,18 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>\"']/g, (char) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;' }[char] ?? char));
 }
 
+function visibleHistorySessions() {
+  const activeId = ensureActiveSession();
+  return readSessions()
+    .filter((session) => session.id === activeId ? hasUserMessage(session.messages ?? []) : hasUserMessage(session.messages ?? []))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 function historyListHtml() {
   const activeId = ensureActiveSession();
-  const sessions = readSessions();
-  if (!sessions.length) return '<div class="navcat-history-empty">No previous chats</div>';
+  const sessions = visibleHistorySessions();
+  if (!sessions.length) return '<div class="navcat-history-empty">No previous chats yet</div>';
+
   return sessions.map((session) => `
     <div class="navcat-history-row ${session.id === activeId ? 'active' : ''}">
       <button type="button" class="navcat-history-item" data-navcat-session="${escapeHtml(session.id)}">
@@ -140,7 +162,7 @@ function historyListHtml() {
 
 function historySignature() {
   const activeId = ensureActiveSession();
-  const compact = readSessions().map((s) => `${s.id}:${s.title}:${s.messages?.length ?? 0}`).join('|');
+  const compact = readSessions().map((s) => `${s.id}:${s.title}:${s.messages?.length ?? 0}:${s.updatedAt}`).join('|');
   return `${historyOpen ? 'open' : 'closed'}:${activeId}:${compact}`;
 }
 
@@ -159,7 +181,16 @@ function applyHistoryUi() {
     <div class="navcat-history-shell">
       <button type="button" class="navcat-history-toggle ${historyOpen ? 'active' : ''}" data-navcat-history>History</button>
       <button type="button" class="navcat-new-chat" data-navcat-new>+ New chat</button>
-      ${historyOpen ? `<div class="navcat-history-menu"><div class="navcat-history-title">Chat history</div>${historyListHtml()}</div>` : ''}
+      ${historyOpen ? `
+        <aside class="navcat-history-menu" aria-label="NavCat chat history">
+          <div class="navcat-history-panel-head">
+            <strong>NavCat</strong>
+            <button type="button" class="navcat-history-close" data-navcat-history-close aria-label="Close history">×</button>
+          </div>
+          <button type="button" class="navcat-history-new-wide" data-navcat-new-panel>✎ New chat</button>
+          <div class="navcat-history-title">Recents</div>
+          <div class="navcat-history-list">${historyListHtml()}</div>
+        </aside>` : ''}
     </div>`;
   controls.dataset.navcatHistorySignature = signature;
 
@@ -168,7 +199,13 @@ function applyHistoryUi() {
     delete controls.dataset.navcatHistorySignature;
     applyHistoryUi();
   });
+  controls.querySelector<HTMLButtonElement>('[data-navcat-history-close]')?.addEventListener('click', () => {
+    historyOpen = false;
+    delete controls.dataset.navcatHistorySignature;
+    applyHistoryUi();
+  });
   controls.querySelector<HTMLButtonElement>('[data-navcat-new]')?.addEventListener('click', newChat);
+  controls.querySelector<HTMLButtonElement>('[data-navcat-new-panel]')?.addEventListener('click', newChat);
   controls.querySelectorAll<HTMLButtonElement>('[data-navcat-session]').forEach((button) => {
     button.addEventListener('click', () => openSession(button.dataset.navcatSession ?? ''));
   });
@@ -228,7 +265,7 @@ document.addEventListener('submit', (event) => {
     const controls = document.querySelector<HTMLElement>('.ai-history-controls');
     if (controls) delete controls.dataset.navcatHistorySignature;
     applyHistoryUi();
-  }, 80);
+  }, 120);
 }, true);
 
 document.addEventListener('click', (event) => {
