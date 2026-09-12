@@ -21,8 +21,6 @@ import './features/dashboard/user-hazard-map-enhancer.css';
 import './features/dashboard/command-center-enhancer';
 import './features/dashboard/command-center-enhancer.css';
 import './features/dashboard/queue-selection-stability';
-import './features/dashboard/incident-workspace-split';
-import './features/dashboard/incident-workspace-split.css';
 import './features/dashboard/admin-dashboard-detail-enhancer';
 import './features/dashboard/admin-dashboard-detail-enhancer.css';
 import './features/dashboard/admin-dashboard-figma-fixes.css';
@@ -35,6 +33,7 @@ import './features/dashboard/incident-queue-finalizer';
 import './features/dashboard/incident-queue-finalizer.css';
 import './features/dashboard/incident-filter-controller';
 import './features/dashboard/incident-filter-controller.css';
+import './features/dashboard/remove-all-incidents-nav';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
