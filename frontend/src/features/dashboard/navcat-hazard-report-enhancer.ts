@@ -20,6 +20,7 @@ const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 let activePreviewUrl: string | null = null;
 let selectedFile: File | null = null;
 let pendingKind: HazardKind = 'road_blocked';
+let latestKnownRoute: EvacuationRoute | null = null;
 
 const labels: Record<HazardKind, string> = {
   road_blocked: 'Road blocked',
@@ -76,6 +77,15 @@ function routeSummary(route: EvacuationRoute) {
   return `${escapeHtml(route.destination_name)} · about ${min} min · ${km}`;
 }
 
+function routeFingerprint(route: EvacuationRoute | null) {
+  if (!route) return '';
+  const geometry = route.geometry ?? [];
+  const start = geometry[0]?.join(',') ?? '';
+  const end = geometry[geometry.length - 1]?.join(',') ?? '';
+  const middle = geometry[Math.floor(geometry.length / 2)]?.join(',') ?? '';
+  return `${route.destination_name}|${Math.round(route.distance_m)}|${start}|${middle}|${end}`;
+}
+
 function cleanupPicker() {
   document.querySelector('.navcat-hazard-picker')?.remove();
   selectedFile = null;
@@ -86,6 +96,7 @@ function cleanupPicker() {
 async function submitReport() {
   if (!selectedFile) return;
   const file = selectedFile;
+  const previousRoute = latestKnownRoute;
   const position = await getPosition();
   if (!position) {
     appendStatus('<strong>Location needed</strong><p>I can attach the photo, but I need location permission before I can place this user-reported hazard on the map or recalculate from your position.</p>');
@@ -107,12 +118,22 @@ async function submitReport() {
 
   saveReport(report);
   window.dispatchEvent(new CustomEvent('jalrakshak:user-hazard-report', { detail: report }));
-  appendStatus(`<div class="navcat-hazard-source">USER REPORTED</div><strong>${escapeHtml(report.label)} saved near your current GPS.</strong><p>I’m recalculating the current road options. This report is not an official road-closure confirmation.</p>`);
+  appendStatus(`<div class="navcat-hazard-source">USER REPORTED</div><strong>${escapeHtml(report.label)} saved near your current GPS.</strong><p>I’m checking the road alternatives again. I’ll avoid routes that pass close to this report, but the report is not an official closure confirmation.</p>`);
 
   try {
     const route = await citizenSafetyApi.getEvacuationRoute(report.latitude, report.longitude);
+    latestKnownRoute = route;
     window.dispatchEvent(new CustomEvent('jalrakshak:navcat-hazard-route', { detail: { report, route } }));
-    appendStatus(`<div class="navcat-hazard-source">ROUTE REFRESHED</div><strong>${routeSummary(route)}</strong><p>JalRakshak recalculated the available road options from your current position after your report. The blockage remains labeled as user-reported until verified.</p><button type="button" data-open-hazard-route>Open Live Map</button>`);
+
+    if (route.screening_status === 'complete' && route.recommended_count === 0) {
+      appendStatus(`<div class="navcat-hazard-source danger">NO ROUTE RECOMMENDED</div><strong>I could not find a road option that clears the current safety screen.</strong><p>${route.alternatives_considered} route${route.alternatives_considered === 1 ? '' : 's'} checked · ${route.rejected_count ?? route.alternatives_considered} rejected. I will not tell you to use a route that the current screen rejected. Open the map to review the situation or request emergency help if you cannot safely move.</p><button type="button" data-open-hazard-route>Open Live Map</button>`);
+      return;
+    }
+
+    const routeChanged = Boolean(previousRoute) && routeFingerprint(previousRoute) !== routeFingerprint(route);
+    const rejected = route.rejected_count ?? 0;
+    const viable = route.viable_count ?? Math.max(1, route.alternatives_considered - rejected);
+    appendStatus(`<div class="navcat-hazard-source">${routeChanged ? 'ROUTE CHANGED' : 'ROUTE REFRESHED'}</div><strong>${routeSummary(route)}</strong><p>${routeChanged ? `Your recommended path changed after the report. ` : ''}${route.alternatives_considered} route${route.alternatives_considered === 1 ? '' : 's'} checked · ${rejected} rejected · ${viable} viable. JalRakshak is now showing the safest remaining viable option from the current prototype screen. The blockage remains USER REPORTED until verified.</p><button type="button" data-open-hazard-route>Open Live Map</button>`);
   } catch {
     appendStatus('<strong>I saved the blockage report, but live routing did not respond.</strong><p>Your report is still marked USER REPORTED. I will not claim a new route is safe until routing returns a result.</p><button type="button" data-open-hazard-route>Open Live Map</button>');
   } finally {
@@ -192,6 +213,11 @@ function enhanceComposer() {
     if (file) handleFile(file);
   });
 }
+
+window.addEventListener('jalrakshak:route-analysis', (event) => {
+  const route = (event as CustomEvent<EvacuationRoute>).detail;
+  if (route) latestKnownRoute = route;
+});
 
 const observer = new MutationObserver(() => enhanceComposer());
 observer.observe(document.body, { childList: true, subtree: true });
