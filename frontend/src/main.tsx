@@ -18,6 +18,8 @@ import './features/dashboard/navcat-image-explainer';
 import './features/dashboard/navcat-image-explainer.css';
 import './features/dashboard/user-hazard-map-enhancer';
 import './features/dashboard/user-hazard-map-enhancer.css';
+import './features/dashboard/command-center-enhancer';
+import './features/dashboard/command-center-enhancer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
