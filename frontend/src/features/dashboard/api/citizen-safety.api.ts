@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../lib/api-client';
+import { screenEvacuationRoute } from './route-screening';
 
 export type SafetyContext = {
   latitude: number;
@@ -106,9 +107,11 @@ export const citizenSafetyApi = {
 
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
     const request = apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`, undefined, 5_500)
-      .then((route) => {
+      .then(async (route) => {
         publishRouteAnalysis(route);
-        return route;
+        const screenedRoute = await screenEvacuationRoute(latitude, longitude, route);
+        publishRouteAnalysis(screenedRoute);
+        return screenedRoute;
       })
       .finally(() => routeRequests.delete(key));
     routeRequests.set(key, request);
