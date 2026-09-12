@@ -42,6 +42,11 @@ export type EmergencyRecord = EmergencyCreate & {
   responder_id?: string | null;
   responder_name?: string | null;
   is_demo?: boolean;
+  navigation_status?: 'assigned' | 'en_route' | 'approaching' | 'on_scene' | 'resolved' | null;
+  responder_eta_seconds?: number | null;
+  responder_distance_m?: number | null;
+  eta_updated_at?: string | null;
+  route_updated_at?: string | null;
 };
 
 export type EmergencyLocationUpdate = {
