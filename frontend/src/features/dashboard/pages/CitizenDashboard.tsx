@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { loadLeaflet } from '../../../lib/load-leaflet';
 import { authSession } from '../../auth/auth-session';
 import { citizenSafetyApi, type EvacuationRoute } from '../api/citizen-safety.api';
 import CitizenEmergencyHelp from './CitizenEmergencyHelp';
@@ -73,31 +74,6 @@ async function reverseGeocodePlace(latitude: number, longitude: number): Promise
     window.clearTimeout(timeout);
   }
 }
-
-const loadLeaflet = () => new Promise<any>((resolve, reject) => {
-  const existing = (window as Window & { L?: any }).L;
-  if (existing) return resolve(existing);
-  if (!document.querySelector('link[data-jalrakshak-leaflet]')) {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    link.dataset.jalrakshakLeaflet = 'true';
-    document.head.appendChild(link);
-  }
-  const previousScript = document.querySelector<HTMLScriptElement>('script[data-jalrakshak-leaflet]');
-  if (previousScript) {
-    previousScript.addEventListener('load', () => resolve((window as Window & { L?: any }).L), { once: true });
-    previousScript.addEventListener('error', reject, { once: true });
-    return;
-  }
-  const script = document.createElement('script');
-  script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-  script.async = true;
-  script.dataset.jalrakshakLeaflet = 'true';
-  script.onload = () => resolve((window as Window & { L?: any }).L);
-  script.onerror = reject;
-  document.body.appendChild(script);
-});
 
 function InteractiveSafetyMap({ center, guidanceActive, route, placeLabel }: { center: MapCenter; guidanceActive: boolean; route: EvacuationRoute | null; placeLabel: PlaceLabel }) {
   const containerRef = useRef<HTMLDivElement | null>(null);

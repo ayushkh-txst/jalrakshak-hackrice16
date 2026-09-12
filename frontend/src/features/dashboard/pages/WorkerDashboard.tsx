@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { authSession } from '../../auth/auth-session';
 import { citizenSafetyApi, type EmergencyListFilters, type EmergencyRecord, type EmergencyStatus } from '../api/citizen-safety.api';
 import './WorkerDashboard.css';
 import './WorkerMapEnhancements.css';
+import ResponderOperationsMap from './ResponderOperationsMap';
 
 type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'chat' | 'report' | 'settings';
-type ViewName = 'queue' | 'map';
+type ViewName = 'queue' | 'map' | 'dashboard' | 'chat' | 'reports' | 'settings';
 type IncidentFilter = 'all' | 'new' | 'assigned' | 'en_route' | 'resolved' | 'live' | 'demo';
 
 const incidentFilters: Array<{ key: IncidentFilter; label: string }> = [
@@ -70,7 +71,9 @@ export default function WorkerDashboard() {
   const [updating, setUpdating] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [activeView, setActiveView] = useState<ViewName>('queue');
-  const [showDemo, setShowDemo] = useState(true);
+  const viewRef = useRef(activeView);
+  viewRef.current = activeView;
+  const [showDemo, setShowDemo] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
 
   const workerName = session?.user.name ?? 'Demo E-Worker';
@@ -85,7 +88,10 @@ export default function WorkerDashboard() {
       const filteredData = filteredResponse.filter((item) => matchesIncidentFilter(item, filter));
       setRecords(allData);
       setQueueRecords(filteredData);
-      setSelectedId((current) => current && filteredData.some((item) => item.id === current) ? current : filteredData[0]?.id ?? null);
+      setSelectedId((current) => {
+        const selectable = viewRef.current === 'map' ? allData : filteredData;
+        return current && selectable.some((item) => item.id === current) ? current : selectable[0]?.id ?? null;
+      });
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load emergency queue');
@@ -109,25 +115,12 @@ export default function WorkerDashboard() {
     return true;
   }), [records, showDemo, showResolved]);
 
-  const mapBounds = useMemo(() => {
-    const list = visibleMapRecords.length ? visibleMapRecords : records;
-    if (!list.length) return { minLat: 27.68, maxLat: 27.76, minLng: 85.28, maxLng: 85.37 };
-    let minLat = Math.min(...list.map((r) => r.latitude));
-    let maxLat = Math.max(...list.map((r) => r.latitude));
-    let minLng = Math.min(...list.map((r) => r.longitude));
-    let maxLng = Math.max(...list.map((r) => r.longitude));
-    const latPad = Math.max((maxLat - minLat) * .18, .018);
-    const lngPad = Math.max((maxLng - minLng) * .18, .025);
-    minLat -= latPad; maxLat += latPad; minLng -= lngPad; maxLng += lngPad;
-    return { minLat, maxLat, minLng, maxLng };
-  }, [visibleMapRecords, records]);
-
-  const operationsMapUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${mapBounds.minLng},${mapBounds.minLat},${mapBounds.maxLng},${mapBounds.maxLat}&bboxSR=4326&imageSR=4326&size=1400,900&format=png32&transparent=false&f=image`;
-
-  const markerPosition = (record: EmergencyRecord) => ({
-    left: `${Math.max(3, Math.min(97, ((record.longitude - mapBounds.minLng) / (mapBounds.maxLng - mapBounds.minLng)) * 100))}%`,
-    top: `${Math.max(4, Math.min(96, (1 - (record.latitude - mapBounds.minLat) / (mapBounds.maxLat - mapBounds.minLat)) * 100))}%`,
-  });
+  useEffect(() => {
+    if (activeView !== 'map') return;
+    if (!visibleMapRecords.some(record => record.id === selectedId)) {
+      setSelectedId(visibleMapRecords.find(record => !record.is_demo)?.id ?? visibleMapRecords[0]?.id ?? null);
+    }
+  }, [activeView, visibleMapRecords, selectedId]);
 
   const updateStatus = async (status: EmergencyStatus) => {
     if (!selected) return;
@@ -152,24 +145,31 @@ export default function WorkerDashboard() {
   const currentStatusIndex = selected ? statusOrder.indexOf(selected.status) : -1;
 
   const openIncidentFromMap = (record: EmergencyRecord) => {
+    setActiveFilter('all');
     setSelectedId(record.id);
     setShowMap(false);
     setActiveView('queue');
   };
 
   return (
-    <main className={`ops-shell ${activeView === 'map' ? 'map-mode' : ''}`}>
+    <main data-worker-view={activeView} className={`ops-shell ${activeView !== 'queue' ? 'map-mode' : ''}`}>
       <aside className="ops-sidebar">
         <div className="ops-logo-row"><div className="ops-logo">◒</div><div><strong>JalRakshak</strong><span>Emergency Response</span></div></div>
         <div className="ops-role">Responder</div>
-        <nav className="ops-nav">
-          <button><Icon name="dashboard"/><span>Dashboard</span></button>
-          <button className={activeView === 'map' ? 'active' : ''} onClick={() => setActiveView('map')}><Icon name="map"/><span>Live Map</span></button>
-          <button><Icon name="incident"/><span>All Incidents</span></button>
-          <button className={activeView === 'queue' ? 'active' : ''} onClick={() => setActiveView('queue')}><Icon name="queue"/><span>Emergency Queue</span>{pendingCount > 0 && <b>{pendingCount}</b>}</button>
-          <button><Icon name="chat"/><span>AI Assistant</span></button>
-          <button><Icon name="report"/><span>Reports</span></button>
-          <button><Icon name="settings"/><span>Settings</span></button>
+        <nav className="ops-nav" aria-label="Responder navigation">
+          {([
+            ['dashboard', 'Dashboard', 'dashboard'], ['map', 'Live Map', 'map'],
+            ['queue', 'Incident Queue', 'queue'], ['chat', 'AI Assistant', 'chat'],
+            ['reports', 'Reports', 'report'], ['settings', 'Settings', 'settings'],
+          ] as Array<[ViewName, string, IconName]>).map(([view, label, icon]) => (
+            <button key={view} type="button" data-worker-nav={view}
+              className={activeView === view ? 'active' : ''}
+              aria-current={activeView === view ? 'page' : undefined}
+              onClick={() => setActiveView(view)}>
+              <Icon name={icon}/><span>{label}</span>
+              {view === 'queue' && pendingCount > 0 && <b>{pendingCount}</b>}
+            </button>
+          ))}
         </nav>
         <div className="ops-user"><span>{workerName.slice(0,1).toUpperCase()}</span><div><strong>{workerName}</strong><small>Responder</small></div><b>›</b></div>
       </aside>
@@ -238,9 +238,9 @@ export default function WorkerDashboard() {
             </div>
           </>}
         </section>
-      </> : <section className="ops-map-page">
+      </> : activeView === 'map' ? <section className="ops-map-page">
         <header className="ops-map-header">
-          <div><span className="ops-card-label">LIVE OPERATIONS MAP</span><h1>Active emergency response</h1><p>English-first street map with live SOS positions from the emergency database. Risk areas and safe zones are prototype operational overlays.</p></div>
+          <div><span className="ops-card-label">LIVE OPERATIONS MAP</span><h1>Active emergency response</h1><p>Geographic SOS positions and shared user-reported hazards. Reports are unverified; no official flood-zone or shelter-status feed is connected.</p></div>
           <div className="ops-map-live">● LIVE · AUTO-REFRESH 5s</div>
         </header>
 
@@ -258,20 +258,7 @@ export default function WorkerDashboard() {
         </div>
 
         <div className="ops-map-layout">
-          <div className="ops-operations-map">
-            <img className="ops-map-basemap" src={operationsMapUrl} alt="English street map for responder operations"/>
-            <div className="ops-risk-wash risk-one"><span>CRITICAL RISK</span></div>
-            <div className="ops-risk-wash risk-two"><span>HIGH RISK</span></div>
-            {visibleMapRecords.map((record) => (
-              <button key={record.id} className={`ops-map-marker ${record.is_demo ? 'demo' : 'live'} ${record.status}`} style={markerPosition(record)} onClick={() => setSelectedId(record.id)} title={`${record.citizen_name} · ${statusLabel(record.status)}`}>
-                <span>{record.emergency_type === 'medical' ? '+' : record.emergency_type === 'evacuation' ? '↗' : '!'}</span>
-                {!record.is_demo && record.status !== 'resolved' && <i/>}
-              </button>
-            ))}
-            <div className="ops-safe-zone zone-a"><b>✓</b><span>SAFE ZONE</span></div>
-            <div className="ops-safe-zone zone-b"><b>✓</b><span>SHELTER</span></div>
-            <div className="ops-map-key"><div><i className="key-critical"/> Critical / high-risk area</div><div><i className="key-safe"/> Safe zone</div><div><i className="key-live"/> Live SOS</div></div>
-          </div>
+          <ResponderOperationsMap records={visibleMapRecords} selectedId={selectedId} onSelect={setSelectedId}/>
 
           <aside className="ops-map-side">
             {selected ? <>
@@ -284,7 +271,7 @@ export default function WorkerDashboard() {
             </> : <div className="ops-map-empty">Select an SOS marker to inspect the incident.</div>}
           </aside>
         </div>
-      </section>}
+      </section> : <section key={activeView} className="command-center-static-view admin-dashboard-stable-host" data-worker-static-view={activeView}/>}
     </main>
   );
 }

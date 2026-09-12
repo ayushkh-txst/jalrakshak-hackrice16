@@ -20,45 +20,7 @@ function normalizeVisibleLocationText(root: Node = document.body) {
   }
 }
 
-function dashboardButtonFromEvent(event: Event) {
-  const target = event.target as HTMLElement | null;
-  const button = target?.closest<HTMLButtonElement>('.ops-nav button');
-  if (!button) return null;
-  return button.querySelector('span')?.textContent?.trim() === 'Dashboard' ? button : null;
-}
-
-function openStableDashboardShell(button: HTMLButtonElement) {
-  const shell = document.querySelector<HTMLElement>('.ops-shell');
-  if (!shell) return;
-
-  shell.querySelector<HTMLElement>('.command-center-static-view')?.remove();
-  shell.querySelectorAll<HTMLElement>('.ops-queue-pane,.ops-detail-pane,.ops-map-page').forEach((el) => {
-    el.style.display = 'none';
-  });
-
-  const host = document.createElement('section');
-  host.className = 'command-center-static-view admin-dashboard-stable-host';
-  shell.appendChild(host);
-
-  document.querySelectorAll<HTMLButtonElement>('.ops-nav button').forEach((nav) => {
-    if (nav.querySelector('span')?.textContent?.trim() !== 'Live Map') {
-      nav.classList.toggle('active', nav === button);
-    }
-  });
-}
-
-// The older command-center enhancer also owns the Dashboard button and re-renders
-// a legacy Nepal dashboard every refresh. Intercept that click before its target
-// handler runs. The newer admin-dashboard enhancer (registered earlier on document)
-// still receives the click and renders into this stable host.
-document.addEventListener('click', (event) => {
-  const button = dashboardButtonFromEvent(event);
-  if (!button) return;
-  event.preventDefault();
-  event.stopPropagation();
-  event.stopImmediatePropagation();
-  openStableDashboardShell(button);
-}, true);
+// WorkerDashboard owns navigation and the dashboard host. Do not intercept its clicks.
 
 let scheduled = false;
 function scheduleNormalize() {

@@ -139,6 +139,23 @@ function refreshAllMaps() {
   maps.forEach((map) => renderReportsOnMap(map, L));
 }
 
+export function attachSharedHazards(map: any, L: LeafletLike) {
+  if (maps.has(map)) return;
+  maps.add(map);
+  if (!unsubscribe) unsubscribe = hazardsApi.subscribe(refreshAllMaps);
+  const originalRemove = typeof map.remove === 'function' ? map.remove.bind(map) : null;
+  if (originalRemove) {
+    map.remove = (...args: any[]) => {
+      maps.delete(map);
+      reportLayers.delete(map);
+      feedLabels.delete(map);
+      if (!maps.size) { unsubscribe?.(); unsubscribe = null; }
+      return originalRemove(...args);
+    };
+  }
+  window.setTimeout(() => { if (maps.has(map)) renderReportsOnMap(map, L); }, 0);
+}
+
 function patchLeaflet() {
   const browser = window as any;
   const L = browser.L as (LeafletLike & Record<string, any>) | undefined;
@@ -147,19 +164,7 @@ function patchLeaflet() {
   const originalMap = L.map.bind(L);
   L.map = (...args: any[]) => {
     const map = originalMap(...args);
-    maps.add(map);
-    if (!unsubscribe) unsubscribe = hazardsApi.subscribe(refreshAllMaps);
-    const originalRemove = typeof map.remove === 'function' ? map.remove.bind(map) : null;
-    if (originalRemove) {
-      map.remove = (...removeArgs: any[]) => {
-        maps.delete(map);
-        reportLayers.delete(map);
-        feedLabels.delete(map);
-        if (!maps.size) { unsubscribe?.(); unsubscribe = null; }
-        return originalRemove(...removeArgs);
-      };
-    }
-    window.setTimeout(() => renderReportsOnMap(map, L), 0);
+    attachSharedHazards(map, L);
     return map;
   };
   L[PATCH_FLAG] = true;

@@ -9,8 +9,8 @@ const districtOrder: DistrictId[] = ['harris', 'fort_bend', 'brazoria', 'galvest
 
 function riskClass(band: RiskBand) { return `risk-${band}`; }
 function escapeHtml(value: unknown) { return String(value ?? '').replace(/[&<>'"]/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m] || m)); }
-function dashboardHost() { return document.querySelector<HTMLElement>('.command-center-static-view'); }
-function navIsDashboard() { return Array.from(document.querySelectorAll<HTMLButtonElement>('.ops-nav button')).some((b) => b.classList.contains('active') && b.querySelector('span')?.textContent?.trim() === 'Dashboard'); }
+function dashboardHost() { return document.querySelector<HTMLElement>('[data-worker-static-view="dashboard"]'); }
+function navIsDashboard() { return document.querySelector('.ops-shell')?.getAttribute('data-worker-view') === 'dashboard'; }
 
 function mapSvg(districts: AdminDashboardOverview['districts']) {
   const d = new Map(districts.map((x) => [x.id, x]));
@@ -72,15 +72,17 @@ function districtHtml(d: DistrictOperations) {
 }
 
 async function renderGlobal() {
-  const host = dashboardHost(); if (!host || busy) return; busy = true;
-  try { overview = await adminDashboardApi.getOverview(); mode='global'; host.innerHTML = globalHtml(overview); wire(); }
-  finally { busy=false; }
+  const host = dashboardHost(); if (!host || busy) return; busy = true; host.dataset.dashboardRendered = 'true';
+  try { overview = await adminDashboardApi.getOverview(); mode='global'; if (host.isConnected && navIsDashboard()) { host.innerHTML = globalHtml(overview); wire(); } }
+  catch { if (host.isConnected && navIsDashboard()) host.textContent = 'Dashboard data could not load. Reopen Dashboard to retry.'; }
+  finally { busy=false; if (navIsDashboard() && dashboardHost() !== host) void renderGlobal(); }
 }
 
 async function renderDistrict(id: DistrictId) {
-  const host = dashboardHost(); if (!host || busy) return; busy=true;
-  try { const d = await adminDashboardApi.getDistrict(id); selectedDistrict=id; mode='district'; host.innerHTML = districtHtml(d); wire(); }
-  finally { busy=false; }
+  const host = dashboardHost(); if (!host || busy) return; busy=true; host.dataset.dashboardRendered = 'true';
+  try { const d = await adminDashboardApi.getDistrict(id); selectedDistrict=id; mode='district'; if (host.isConnected && navIsDashboard()) { host.innerHTML = districtHtml(d); wire(); } }
+  catch { if (host.isConnected && navIsDashboard()) host.textContent = 'Dashboard data could not load. Reopen Dashboard to retry.'; }
+  finally { busy=false; if (navIsDashboard() && dashboardHost() !== host) void renderGlobal(); }
 }
 
 function wire() {
@@ -99,7 +101,7 @@ function boot() {
   const observer = new MutationObserver(()=>{
     if (!navIsDashboard()) return;
     const host = dashboardHost();
-    if (!host || host.querySelector('[data-admin-dashboard]')) return;
+    if (!host || host.dataset.dashboardRendered) return;
     window.setTimeout(()=>void (mode==='global'?renderGlobal():renderDistrict(selectedDistrict)),0);
   });
   observer.observe(document.body,{childList:true,subtree:true});

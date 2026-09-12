@@ -29,7 +29,6 @@ import './features/dashboard/admin-county-map-enhancer.css';
 import './features/dashboard/responder-routing-enhancer';
 import './features/dashboard/responder-live-map-enhancer';
 import './features/dashboard/incident-filter-controller.css';
-import './features/dashboard/remove-all-incidents-nav';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

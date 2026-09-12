@@ -5,9 +5,9 @@ Branch: `feature/login-page-ui`.
 ## Stage status
 
 - Stages 1–3: existing Incident Queue, lifecycle sync, and navigation persistence retained. User reported the working flow; this change does not claim a full re-test of those stages.
-- Stage 4: ✅ shared-hazard implementation and isolated automated verification complete. One smoke check on the user's local installation remains.
+- Stage 4: shared-hazard save and citizen marker confirmed on the user's installation. The responder Live Map/navigation repair below completes the missing map integration; its browser regressions pass in isolation.
 - Stage 5: next — complete automatic reroute coordination, backend route invalidation, and responder/citizen notifications.
-- Stages 6–20: pending in the user's original priority order. In particular, the complete geographic Admin Live Map and operational NavCat are not part of Stage 4.
+- Stages 6–20: pending in the user's original priority order. The responder incident/hazard Live Map is now geographic; official county flood/shelter feeds and operational NavCat remain later work.
 
 ## Stage 4 changes
 
@@ -17,7 +17,7 @@ Branch: `feature/login-page-ui`.
 - `PATCH /api/v1/hazards/{id}` accepts `{"status":"resolved"}` or `{"status":"active"}`. Only a verified `worker` token can change status (the existing app uses this role for responders/admins).
 - `GET /api/v1/hazards/{id}/photo` returns a JPEG data URL only to the reporter or a responder. Photos are checked for actual JPEG/PNG/WebP content, capped at 8 MB/20 megapixels, reduced to 1600 pixels and re-encoded without EXIF metadata. Request streams are capped at 12 MB. Validation errors do not echo image data.
 - The existing NavCat attachment picker saves through the API, prevents double submits, retains failed submissions for retry, and uploads the optional photo only after the checkbox is selected. It clearly distinguishes a saved report from a failed route calculation.
-- Existing Leaflet hazard markers read the shared feed with a freshness/unavailable label. Worker popups offer photo review and resolution. The full Admin Live Map is still Stage 6; no second map/enhancer was introduced.
+- Existing Leaflet hazard markers read the shared feed with a freshness/unavailable label. Worker popups offer photo review and resolution. The follow-up repair below connects the existing responder Live Map to that same renderer.
 - One reference-counted poller refreshes mounted map consumers every five seconds, pauses for hidden documents, and stops when its last consumer leaves. Citizen and responder route calculations always fetch the same active backend feed.
 - Route screening checks whole road segments near reports, not just sampled vertices. It refuses to recommend a route when the hazard feed or road-routing service fails. Removed the responder's unscreened straight-line recommendation fallback. Corrected the existing latitude/longitude conversion at responder map boundaries.
 - Citizen cached guidance is invalidated when shared reports change; the existing responder monitoring hook consumes backend changes. Full automatic route/ETA/notification coordination remains Stage 5.
@@ -73,6 +73,32 @@ npx vite build
 The branch has no checked-in TypeScript project configuration; its pre-existing `npm run build` runs `tsc -b`. The explicit check above avoids claiming that missing project setup was repaired in Stage 4.
 
 ## One local smoke check (no SOS replay)
+
+### Responder map/navigation repair
+
+The user identified two integration bugs after the Stage 4 save check: the responder Live Map was an exported world-map image with percentage-positioned decorations, and independent React/imperative navigation handlers left Dashboard and Live Map highlighted together.
+
+- `WorkerDashboard` now owns all six sidebar views and `aria-current`. Removed the conflicting click interception and legacy pane-force-show script; existing Dashboard/Reports/Chat/Settings renderers fill only the currently mounted React host.
+- Replaced the responder image with a real Leaflet map using the same loader and authenticated hazard renderer as the citizen map. SOS markers, report markers/circles, responder positions and existing route polylines use geographic coordinates.
+- Demo incidents are hidden by default. Enabling distant demos does not fit the world or reset zoom. Focus selected SOS and Show reported hazards controls provide explicit recentering. Polls preserve the viewport and selection independently of the queue filter.
+- Removed fixed-position flood/shelter decorations from the responder Live Map. County Dashboard modeled views are unchanged; no official flood-zone or shelter-status feed is claimed.
+- Hazard popups now appear on the responder map, including Mark resolved and optional authenticated photo review. Existing failed-resolution retry, stale-feed warnings and shared polling cleanup are retained. Reports remain visible even without an active SOS.
+- Map teardown handles rapid sidebar switches without late zoom callbacks accessing removed panes. Resize handling supports narrow screens.
+
+Verification: explicit TypeScript check, Vite 8.3.0 production bundle, all 9 existing hazard tests, and `tests/responder-map.browser.mjs` passed. Browser checks exercise the actual app with React StrictMode and real Leaflet 1.9.4; API responses, GPS and map tiles are mocked. Coverage includes all six sidebar views, repeated map mounting, geographic marker/route coordinates, distant demo toggling, polling/selection, map-to-queue navigation, resolve failure/retry, no-SOS hazards, 390px layout, stale feed and timer cleanup. This does not certify external provider uptime or real-world route safety.
+
+No application dependency change or backend restart is needed for this follow-up. Pull the branch, restart only the frontend, and refresh the responder page. Choose **Live Map → Show reported hazards → report marker → Mark resolved** to remove the user's test report. Do not repeat the SOS flow.
+
+To repeat the isolated browser check, install test-only tooling and run Vite in another terminal:
+
+```sh
+# frontend/ — test tooling only; do not commit its generated dependency changes
+npm install --no-save --package-lock=false playwright leaflet@1.9.4
+npx playwright install chromium
+TEST_APP_URL=http://127.0.0.1:5173 node tests/responder-map.browser.mjs
+```
+
+### Original hazard submission check
 
 In citizen NavCat, use the existing paperclip, select a test road photo, choose the hazard type, optionally check **Also upload this photo**, and submit. Expect **saved to the backend**. Open the citizen Live Map and confirm a shared hazard marker survives a reload/relogin. In the responder view, re-screen an existing route: it should include the shared-report count and reject a candidate passing near that marker. Reports are unverified; an unrelated distant report need not change the route.
 
