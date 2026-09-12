@@ -14,6 +14,8 @@ import './features/dashboard/ai-chat-history-enhancer';
 import './features/dashboard/ai-chat-history-enhancer.css';
 import './features/dashboard/navcat-hazard-report-enhancer';
 import './features/dashboard/navcat-hazard-report-enhancer.css';
+import './features/dashboard/user-hazard-map-enhancer';
+import './features/dashboard/user-hazard-map-enhancer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
