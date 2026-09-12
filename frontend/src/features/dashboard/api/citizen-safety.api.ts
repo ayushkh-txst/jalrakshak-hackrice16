@@ -50,6 +50,11 @@ export type EmergencyLocationUpdate = {
   accuracy_m?: number | null;
 };
 
+export type EmergencyListFilters = {
+  status?: EmergencyStatus;
+  is_demo?: boolean;
+};
+
 export type EvacuationRouteStep = {
   instruction: string;
   distance_m: number;
@@ -95,6 +100,15 @@ function publishRouteAnalysis(route: EvacuationRoute) {
   window.dispatchEvent(new CustomEvent<EvacuationRoute>('jalrakshak:route-analysis', { detail: route }));
 }
 
+function emergencyListPath(filters?: EmergencyListFilters) {
+  if (!filters || (filters.status === undefined && filters.is_demo === undefined)) return '/emergencies';
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (typeof filters.is_demo === 'boolean') params.set('is_demo', String(filters.is_demo));
+  const query = params.toString();
+  return query ? `/emergencies?${query}` : '/emergencies';
+}
+
 export const citizenSafetyApi = {
   getContext(latitude: number, longitude: number): Promise<SafetyContext> {
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
@@ -123,8 +137,8 @@ export const citizenSafetyApi = {
   getEmergency(id: string): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}`);
   },
-  listEmergencies(): Promise<EmergencyRecord[]> {
-    return apiRequest<EmergencyRecord[]>('/emergencies');
+  listEmergencies(filters?: EmergencyListFilters): Promise<EmergencyRecord[]> {
+    return apiRequest<EmergencyRecord[]>(emergencyListPath(filters));
   },
   updateEmergency(id: string, payload: { status: EmergencyStatus; responder_id?: string; responder_name?: string }): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
