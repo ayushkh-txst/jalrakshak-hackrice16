@@ -64,6 +64,7 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
         if (active) setTrackingError(error instanceof Error ? error.message : 'Unable to refresh responder status');
       }
     };
+    void refresh();
     const timer = window.setInterval(() => void refresh(), 3000);
     return () => { active = false; window.clearInterval(timer); };
   }, [record?.id, record?.status]);
@@ -162,10 +163,33 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
     return 0;
   }, [record]);
 
+  const formatEta = (seconds?: number | null) => {
+    if (seconds == null || !Number.isFinite(seconds)) return null;
+    const minutes = Math.max(1, Math.round(seconds / 60));
+    return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`;
+  };
+
+  const formatResponderDistance = (meters?: number | null) => {
+    if (meters == null || !Number.isFinite(meters)) return null;
+    return meters >= 1609.344 ? `${(meters / 1609.344).toFixed(1)} mi` : `${Math.max(1, Math.round(meters * 3.28084))} ft`;
+  };
+
+  const formatUpdatedTime = (iso?: string | null) => {
+    if (!iso) return null;
+    const timestamp = Date.parse(iso);
+    if (!Number.isFinite(timestamp)) return null;
+    return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  };
+
   if (record) {
     const cancelled = record.status === 'cancelled';
-    const headline = cancelled ? 'Request cancelled' : record.status === 'submitted' ? 'Waiting for a responder' : record.status === 'assigned' ? 'Responder assigned' : record.status === 'en_route' ? 'Help is on the way' : 'Response complete';
-    const copy = cancelled ? 'This emergency request has been closed. You can return to the overview and create a new request if needed.' : record.status === 'submitted' ? 'Your SOS is active and visible in the responder queue. This page checks for updates every 3 seconds.' : record.status === 'assigned' ? `${record.responder_name ?? 'A responder'} has accepted your request and is preparing to respond.` : record.status === 'en_route' ? `${record.responder_name ?? 'Your responder'} is en route to your location. Keep your phone available.` : 'The responder marked this incident resolved.';
+    const navigationStatus = record.navigation_status ?? (record.status === 'cancelled' ? null : record.status);
+    const etaLabel = formatEta(record.responder_eta_seconds);
+    const distanceLabel = formatResponderDistance(record.responder_distance_m);
+    const etaUpdatedLabel = formatUpdatedTime(record.eta_updated_at ?? record.route_updated_at);
+    const synchronizedLabel = formatUpdatedTime(record.updated_at ?? record.created_at);
+    const headline = cancelled ? 'Request cancelled' : navigationStatus === 'approaching' ? 'Responder is approaching' : navigationStatus === 'on_scene' ? 'Responder is on scene' : record.status === 'submitted' ? 'Waiting for a responder' : record.status === 'assigned' ? 'Responder assigned' : record.status === 'en_route' ? 'Help is on the way' : 'Response complete';
+    const copy = cancelled ? 'This emergency request has been closed. You can return to the overview and create a new request if needed.' : navigationStatus === 'approaching' ? `${record.responder_name ?? 'Your responder'} is close to your location. Keep your phone available.` : navigationStatus === 'on_scene' ? `${record.responder_name ?? 'Your responder'} has arrived at your location.` : record.status === 'submitted' ? 'Your SOS is active and visible in the responder queue. This page checks for updates every 3 seconds.' : record.status === 'assigned' ? `${record.responder_name ?? 'A responder'} has accepted your request and is preparing to respond.` : record.status === 'en_route' ? `${record.responder_name ?? 'Your responder'} is en route to your location. Keep your phone available.` : 'The responder marked this incident resolved.';
 
     return (
       <section className="emergency-screen rescue-tracking-screen">
@@ -209,11 +233,29 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
               ) : (
                 <div className="awaiting-responder"><div className="tracking-spinner"/><strong>Finding an available responder</strong><span>Your request is visible in the emergency queue.</span></div>
               )}
+              {record.responder_name && (
+                <div className="citizen-response-progress">
+                  <div>
+                    <span>RESPONDER STATUS</span>
+                    <strong>{navigationStatus?.replace('_', ' ').toUpperCase() ?? 'ASSIGNED'}</strong>
+                  </div>
+                  <div>
+                    <span>ETA</span>
+                    <strong>{etaLabel ?? (record.status === 'assigned' ? 'Preparing route' : record.status === 'resolved' ? 'Complete' : 'Waiting for route')}</strong>
+                  </div>
+                  <div>
+                    <span>DISTANCE</span>
+                    <strong>{distanceLabel ?? '—'}</strong>
+                  </div>
+                  <small>{etaUpdatedLabel ? `ETA updated at ${etaUpdatedLabel}` : 'ETA will appear when the responder route is saved to the emergency record.'}</small>
+                </div>
+              )}
               <div className="tracking-location">
                 <span>YOUR LOCATION</span>
                 <strong>{record.latitude.toFixed(5)}, {record.longitude.toFixed(5)}</strong>
                 {record.accuracy_m != null && <small>GPS accuracy ±{Math.round(record.accuracy_m)} m</small>}
                 {record.status !== 'resolved' && <small>{gpsLive ? '● ' : '○ '}{gpsMessage}</small>}
+                {synchronizedLabel && <small>Emergency record synchronized at {synchronizedLabel}</small>}
               </div>
             </aside>
           </div>
