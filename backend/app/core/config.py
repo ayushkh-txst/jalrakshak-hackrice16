@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,12 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
+
+    # Development-only demo accounts. Loaded from .env.
+    demo_citizen_email: str = "citizen@g0ne.local"
+    demo_citizen_password: SecretStr = SecretStr("CitizenDemo2026!")
+    demo_worker_email: str = "worker@g0ne.local"
+    demo_worker_password: SecretStr = SecretStr("WorkerDemo2026!")
 
     model_config = SettingsConfigDict(
         env_file=".env",
