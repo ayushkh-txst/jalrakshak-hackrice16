@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { citizenSafetyApi, type EmergencyRecord, type EmergencyType, type SafetyContext } from '../api/citizen-safety.api';
 import './CitizenEmergencyHelp.css';
 
@@ -37,6 +37,10 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
   const [trackingError, setTrackingError] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [gpsLive, setGpsLive] = useState(false);
+  const [gpsMessage, setGpsMessage] = useState('GPS will update responders while this SOS is active.');
+  const lastLocationSentAt = useRef(0);
+  const locationUpdateInFlight = useRef(false);
 
   const refreshSafety = async (latitude: number, longitude: number) => {
     setSafetyError('');
@@ -62,6 +66,57 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
     };
     const timer = window.setInterval(() => void refresh(), 3000);
     return () => { active = false; window.clearInterval(timer); };
+  }, [record?.id, record?.status]);
+
+  useEffect(() => {
+    if (!record || record.status === 'resolved' || record.status === 'cancelled') {
+      setGpsLive(false);
+      return;
+    }
+    if (!navigator.geolocation) {
+      setGpsMessage('Live GPS is not supported by this browser. Responders will use the last known location.');
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (result) => {
+        const next = {
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+          accuracy: result.coords.accuracy,
+          label: 'Live GPS location',
+        };
+        setPosition(next);
+        setGpsLive(true);
+        setGpsMessage(`Live GPS · accuracy ±${Math.round(result.coords.accuracy)} m`);
+
+        const now = Date.now();
+        if (now - lastLocationSentAt.current < 4000 || locationUpdateInFlight.current) return;
+        lastLocationSentAt.current = now;
+        locationUpdateInFlight.current = true;
+        void citizenSafetyApi.updateEmergencyLocation(record.id, {
+          latitude: next.latitude,
+          longitude: next.longitude,
+          accuracy_m: next.accuracy,
+        }).then((latest) => {
+          setRecord(latest);
+          setTrackingError('');
+        }).catch((error) => {
+          setTrackingError(error instanceof Error ? error.message : 'Unable to share your latest GPS location');
+        }).finally(() => {
+          locationUpdateInFlight.current = false;
+        });
+      },
+      (error) => {
+        setGpsLive(false);
+        setGpsMessage(error.code === error.PERMISSION_DENIED
+          ? 'Location permission is off. Responders are using your last known location.'
+          : 'GPS signal unavailable. Responders are using your last known location.');
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 },
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [record?.id, record?.status]);
 
   const useMyLocation = () => {
@@ -154,7 +209,12 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
               ) : (
                 <div className="awaiting-responder"><div className="tracking-spinner"/><strong>Finding an available responder</strong><span>Your request is visible in the emergency queue.</span></div>
               )}
-              <div className="tracking-location"><span>YOUR LOCATION</span><strong>{record.latitude.toFixed(5)}, {record.longitude.toFixed(5)}</strong>{record.accuracy_m != null && <small>GPS accuracy ±{Math.round(record.accuracy_m)} m</small>}</div>
+              <div className="tracking-location">
+                <span>YOUR LOCATION</span>
+                <strong>{record.latitude.toFixed(5)}, {record.longitude.toFixed(5)}</strong>
+                {record.accuracy_m != null && <small>GPS accuracy ±{Math.round(record.accuracy_m)} m</small>}
+                {record.status !== 'resolved' && <small>{gpsLive ? '● ' : '○ '}{gpsMessage}</small>}
+              </div>
             </aside>
           </div>
         )}
