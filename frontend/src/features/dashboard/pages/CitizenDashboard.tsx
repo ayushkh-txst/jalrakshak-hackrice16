@@ -15,6 +15,13 @@ type MapCenter = {
   longitude: number;
 };
 
+type GuidanceStep = {
+  title: string;
+  detail: string;
+  distance: string;
+  eta: string;
+};
+
 const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: boolean }> = [
   { label: 'Overview', icon: '▦' },
   { label: 'Live Map', icon: '◫' },
@@ -25,7 +32,23 @@ const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: bo
 ];
 
 const DEMO_CENTER = { latitude: 27.9516, longitude: 85.6846 };
-const SAFE_ZONE = { latitude: 27.9596, longitude: 85.6974 };
+const SAFE_ZONE = { latitude: 27.9635, longitude: 85.7085 };
+
+const ROUTE_POINTS: Array<[number, number]> = [
+  [27.9516, 85.6846],
+  [27.9494, 85.6883],
+  [27.9492, 85.6978],
+  [27.9538, 85.7048],
+  [27.9588, 85.7072],
+  [SAFE_ZONE.latitude, SAFE_ZONE.longitude],
+];
+
+const guidanceSteps: GuidanceStep[] = [
+  { title: 'Head southeast to the upper road', detail: 'Stay away from the riverside lane.', distance: '920 m', eta: '13 min' },
+  { title: 'Continue past the market junction', detail: 'The recommended path bypasses both closures.', distance: '610 m', eta: '9 min' },
+  { title: 'Turn left toward the school road', detail: 'Remain on the marked higher-ground route.', distance: '280 m', eta: '4 min' },
+  { title: 'Arrive at Shree Secondary School', detail: 'Enter through the east safe-zone entrance.', distance: '0 m', eta: 'Arrived' },
+];
 
 const loadLeaflet = () =>
   new Promise<any>((resolve, reject) => {
@@ -59,7 +82,13 @@ const loadLeaflet = () =>
     document.body.appendChild(script);
   });
 
-function InteractiveSafetyMap({ center }: { center: MapCenter }) {
+function InteractiveSafetyMap({
+  center,
+  guidanceActive,
+}: {
+  center: MapCenter;
+  guidanceActive: boolean;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [showRiskAreas, setShowRiskAreas] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(true);
@@ -78,10 +107,8 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
           zoomControl: true,
           attributionControl: true,
           scrollWheelZoom: true,
-        }).setView([center.latitude, center.longitude], 13);
+        }).setView([center.latitude, center.longitude], guidanceActive ? 14 : 13);
 
-        // Esri's World Street Map works without a client API key and uses
-        // English-forward labels in most locations, which is clearer for the demo.
         L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
           {
@@ -91,7 +118,7 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
         ).addTo(map);
 
         const userMarker = L.circleMarker([center.latitude, center.longitude], {
-          radius: 9,
+          radius: guidanceActive ? 10 : 9,
           color: '#ffffff',
           weight: 4,
           fillColor: '#3d7fe8',
@@ -102,59 +129,57 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
         if (showRiskAreas) {
           const criticalArea = L.polygon(
             [
-              [27.9480, 85.6700],
-              [27.9570, 85.6735],
-              [27.9600, 85.6840],
-              [27.9545, 85.6915],
-              [27.9460, 85.6885],
-              [27.9435, 85.6780],
+              [27.9462, 85.6740],
+              [27.9530, 85.6748],
+              [27.9552, 85.6804],
+              [27.9526, 85.6840],
+              [27.9474, 85.6830],
+              [27.9448, 85.6780],
             ],
             {
-              color: '#cf4a44',
+              color: '#9f2725',
               weight: 3,
               dashArray: '8 6',
-              fillColor: '#d95b53',
-              fillOpacity: 0.23,
+              fillColor: '#b8322f',
+              fillOpacity: 0.3,
             },
           ).addTo(map);
           criticalArea.bindPopup('<strong>CRITICAL FLOOD RISK</strong><br/>Avoid this zone. Rapid inundation is possible.');
 
           const highRiskArea = L.polygon(
             [
-              [27.9510, 85.6910],
-              [27.9605, 85.6925],
-              [27.9620, 85.7045],
-              [27.9550, 85.7090],
-              [27.9485, 85.7020],
+              [27.9550, 85.6892],
+              [27.9615, 85.6900],
+              [27.9630, 85.6992],
+              [27.9583, 85.7020],
+              [27.9535, 85.6960],
             ],
             {
-              color: '#dc8b4d',
+              color: '#d67c36',
               weight: 3,
               dashArray: '8 6',
-              fillColor: '#eca66d',
-              fillOpacity: 0.2,
+              fillColor: '#eda667',
+              fillOpacity: 0.22,
             },
           ).addTo(map);
           highRiskArea.bindPopup('<strong>HIGH FLOOD RISK</strong><br/>Conditions may worsen. Prepare to move to higher ground.');
         }
 
         if (showRoute) {
-          const route = L.polyline(
-            [
-              [center.latitude, center.longitude],
-              [27.9534, 85.6865],
-              [27.9558, 85.6898],
-              [27.9580, 85.6932],
-              [SAFE_ZONE.latitude, SAFE_ZONE.longitude],
-            ],
-            {
-              color: '#76623a',
-              weight: 6,
-              opacity: 0.92,
-              lineJoin: 'round',
-            },
-          ).addTo(map);
-          route.bindPopup('<strong>Recommended evacuation route</strong><br/>Demo route avoids marked risk areas and closures.');
+          const routePoints = ROUTE_POINTS.map(([latitude, longitude], index) =>
+            index === 0 ? [center.latitude, center.longitude] : [latitude, longitude],
+          );
+          const route = L.polyline(routePoints, {
+            color: guidanceActive ? '#5d4a27' : '#76623a',
+            weight: guidanceActive ? 8 : 6,
+            opacity: 0.94,
+            lineJoin: 'round',
+          }).addTo(map);
+          route.bindPopup('<strong>Recommended evacuation route</strong><br/>Demo route visibly avoids the marked flood zones and road closures.');
+
+          if (guidanceActive) {
+            map.fitBounds(route.getBounds(), { padding: [45, 45] });
+          }
         }
 
         if (showSafeZones) {
@@ -165,7 +190,7 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
             iconAnchor: [17, 17],
           });
           const safeMarker = L.marker([SAFE_ZONE.latitude, SAFE_ZONE.longitude], { icon: safeIcon }).addTo(map);
-          safeMarker.bindPopup('<strong>Shree Secondary School</strong><br/>Recommended safe destination · Demo capacity 61%');
+          safeMarker.bindPopup('<strong>Shree Secondary School</strong><br/>Recommended safe destination · Outside current risk polygons · Demo capacity 61%');
         }
 
         const closureIcon = L.divIcon({
@@ -174,10 +199,10 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
           iconSize: [28, 28],
           iconAnchor: [14, 14],
         });
-        L.marker([27.9530, 85.6900], { icon: closureIcon })
+        L.marker([27.9518, 85.6810], { icon: closureIcon })
           .addTo(map)
           .bindPopup('<strong>Road closure</strong><br/>Riverside road temporarily blocked.');
-        L.marker([27.9567, 85.6825], { icon: closureIcon })
+        L.marker([27.9572, 85.6950], { icon: closureIcon })
           .addTo(map)
           .bindPopup('<strong>Road closure</strong><br/>Low-lying crossing reported unsafe.');
 
@@ -189,7 +214,7 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
       disposed = true;
       if (map) map.remove();
     };
-  }, [center.latitude, center.longitude, showRiskAreas, showSafeZones, showRoute]);
+  }, [center.latitude, center.longitude, showRiskAreas, showSafeZones, showRoute, guidanceActive]);
 
   return (
     <>
@@ -213,6 +238,8 @@ export default function CitizenDashboard() {
   const [helpRequested, setHelpRequested] = useState(false);
   const [browserLocation, setBrowserLocation] = useState<BrowserLocation>(null);
   const [locationStatus, setLocationStatus] = useState('Demo location');
+  const [guidanceActive, setGuidanceActive] = useState(false);
+  const [guidanceStep, setGuidanceStep] = useState(0);
 
   const displayName = useMemo(() => {
     const name = session?.user.name?.trim();
@@ -227,6 +254,9 @@ export default function CitizenDashboard() {
     .toUpperCase();
 
   const mapCenter = browserLocation ?? DEMO_CENTER;
+  const currentGuidance = guidanceSteps[guidanceStep];
+  const guidanceComplete = guidanceActive && guidanceStep === guidanceSteps.length - 1;
+  const guidanceProgress = guidanceActive ? ((guidanceStep + 1) / guidanceSteps.length) * 100 : 0;
 
   const signOut = () => {
     authSession.clear();
@@ -236,6 +266,7 @@ export default function CitizenDashboard() {
 
   const requestHelp = () => {
     setHelpRequested(true);
+    setGuidanceActive(false);
     setShowCriticalAlert(false);
     setActiveNav('Emergency Help');
   };
@@ -243,6 +274,21 @@ export default function CitizenDashboard() {
   const openGuide = () => {
     setShowCriticalAlert(false);
     setActiveNav('Live Map');
+  };
+
+  const startGuidance = () => {
+    setGuidanceStep(0);
+    setGuidanceActive(true);
+    setShowCriticalAlert(false);
+  };
+
+  const stopGuidance = () => {
+    setGuidanceActive(false);
+    setGuidanceStep(0);
+  };
+
+  const advanceGuidance = () => {
+    setGuidanceStep((step) => Math.min(step + 1, guidanceSteps.length - 1));
   };
 
   const useMyLocation = () => {
@@ -327,63 +373,93 @@ export default function CitizenDashboard() {
   );
 
   const renderLiveMap = () => (
-    <section className="live-map-screen">
+    <section className={`live-map-screen ${guidanceActive ? 'guidance-active' : ''}`}>
       <div className="map-page-heading">
         <div>
           <span className="safe-eyebrow">LIVE SAFETY MAP</span>
-          <h1>Safest route around you</h1>
+          <h1>{guidanceActive ? 'Evacuation guidance' : 'Safest route around you'}</h1>
           <p>English-friendly live map tiles are provided by Esri. Risk areas, closures, and the evacuation route are interactive demo overlays until the live flood feeds are connected.</p>
         </div>
         <button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button>
       </div>
 
+      {guidanceActive && (
+        <section className={`guidance-banner ${guidanceComplete ? 'complete' : ''}`}>
+          <div className="guidance-banner-icon">{guidanceComplete ? '✓' : '➜'}</div>
+          <div className="guidance-banner-copy">
+            <span>{guidanceComplete ? 'SAFE DESTINATION REACHED' : `STEP ${guidanceStep + 1} OF ${guidanceSteps.length}`}</span>
+            <strong>{currentGuidance.title}</strong>
+            <p>{currentGuidance.detail}</p>
+          </div>
+          <div className="guidance-banner-metrics">
+            <strong>{currentGuidance.distance}</strong>
+            <span>{currentGuidance.eta}</span>
+          </div>
+          <div className="guidance-progress"><span style={{ width: `${guidanceProgress}%` }} /></div>
+        </section>
+      )}
+
       <div className="map-status-row">
         <span><i className="status-dot green" /> {locationStatus}</span>
         <span><i className="status-dot red" /> Critical flood zone nearby</span>
         <span><i className="status-dot gold" /> 2 road closures</span>
+        {guidanceActive && <span className="navigation-live"><i className="status-dot blue" /> Navigation active</span>}
       </div>
 
       <div className="map-layout">
         <div className="map-panel">
-          <InteractiveSafetyMap center={mapCenter} />
+          <InteractiveSafetyMap center={mapCenter} guidanceActive={guidanceActive} />
           <div className="map-overlay-card map-you">
             <strong>YOU</strong>
             <span>{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span>
           </div>
           <div className="map-overlay-card map-risk-legend">
             <span><i className="legend-swatch critical" /> Critical risk</span>
-            <span><i className="legend-swatch high" /> High risk</span>
+            <span><i className="legend-swatch high-risk" /> High risk</span>
             <span><i className="legend-swatch route" /> Recommended route</span>
             <span><i className="legend-swatch safe" /> Safe destination</span>
           </div>
         </div>
 
         <aside className="route-panel">
-          <span className="safe-eyebrow">RECOMMENDED EVACUATION</span>
+          <span className="safe-eyebrow">{guidanceActive ? 'ACTIVE GUIDANCE' : 'RECOMMENDED EVACUATION'}</span>
           <h2>Shree Secondary School</h2>
           <div className="route-metrics">
-            <div><strong>13 min</strong><span>ETA</span></div>
-            <div><strong>920 m</strong><span>Distance</span></div>
+            <div><strong>{guidanceActive ? currentGuidance.eta : '13 min'}</strong><span>ETA</span></div>
+            <div><strong>{guidanceActive ? currentGuidance.distance : '920 m'}</strong><span>Distance</span></div>
             <div><strong>61%</strong><span>Capacity</span></div>
           </div>
           <div className="route-safety-note">
             <strong>✓ Route currently passable</strong>
-            <p>Avoid the riverside road. The recommended path stays on higher ground and bypasses two reported closures.</p>
+            <p>The safe destination is outside both demo flood polygons. The route stays on higher ground and bypasses two reported closures.</p>
           </div>
           <div className="route-steps">
-            <div><b>1</b><span><strong>Head north</strong><small>Continue for 280 m</small></span></div>
-            <div><b>2</b><span><strong>Turn right at the market</strong><small>Stay on the upper road</small></span></div>
-            <div><b>3</b><span><strong>Continue to the school</strong><small>Safe-zone entrance is on the east side</small></span></div>
+            {guidanceSteps.map((step, index) => (
+              <div key={step.title} className={`${guidanceActive && index === guidanceStep ? 'current-step' : ''} ${guidanceActive && index < guidanceStep ? 'completed-step' : ''}`}>
+                <b>{guidanceActive && index < guidanceStep ? '✓' : index + 1}</b>
+                <span><strong>{step.title}</strong><small>{step.detail}</small></span>
+              </div>
+            ))}
           </div>
-          <button type="button" className="figma-primary route-start">START GUIDANCE</button>
+
+          {!guidanceActive ? (
+            <button type="button" className="figma-primary route-start" onClick={startGuidance}>START GUIDANCE</button>
+          ) : guidanceComplete ? (
+            <button type="button" className="figma-primary route-start guidance-finish" onClick={stopGuidance}>FINISH GUIDANCE</button>
+          ) : (
+            <div className="guidance-actions">
+              <button type="button" className="figma-primary route-start" onClick={advanceGuidance}>NEXT DEMO STEP</button>
+              <button type="button" className="figma-secondary guidance-stop" onClick={stopGuidance}>END GUIDANCE</button>
+            </div>
+          )}
           <button type="button" className="figma-danger-button route-help" onClick={requestHelp}>I CAN'T EVACUATE — GET HELP</button>
         </aside>
       </div>
 
       <div className="map-bottom-cards">
-        <article><span>🚧</span><div><strong>2 closures ahead</strong><small>Both excluded from recommended route</small></div></article>
-        <article><span>🏫</span><div><strong>Safe zone accepting arrivals</strong><small>Demo capacity: 61%</small></div></article>
-        <article><span>📡</span><div><strong>Live map connected</strong><small>Esri World Street Map base layer</small></div></article>
+        <article><span>🚧</span><div><strong>2 closures avoided</strong><small>Both are excluded from the recommended route</small></div></article>
+        <article><span>🏫</span><div><strong>Safe zone outside risk areas</strong><small>Demo capacity: 61%</small></div></article>
+        <article><span>📡</span><div><strong>{guidanceActive ? 'Guidance mode active' : 'Live map connected'}</strong><small>Esri World Street Map base layer</small></div></article>
       </div>
     </section>
   );
