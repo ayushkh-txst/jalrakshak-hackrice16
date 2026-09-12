@@ -32,9 +32,9 @@ export default function WorkerDashboard() {
 
   const loadQueue = async () => {
     try {
-      const data = await citizenSafetyApi.listEmergencies();
+      const data = (await citizenSafetyApi.listEmergencies()).filter((item) => item.status !== 'cancelled');
       setRecords(data);
-      setSelectedId((current) => current ?? data[0]?.id ?? null);
+      setSelectedId((current) => current && data.some((item) => item.id === current) ? current : data[0]?.id ?? null);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load emergency queue');
