@@ -40,6 +40,7 @@ export type EmergencyRecord = EmergencyCreate & {
   updated_at?: string | null;
   responder_id?: string | null;
   responder_name?: string | null;
+  is_demo?: boolean;
 };
 
 export const citizenSafetyApi = {
