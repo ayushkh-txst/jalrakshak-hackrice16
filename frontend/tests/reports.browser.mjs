@@ -29,6 +29,7 @@ with database.SessionLocal() as db:
         created = now - timedelta(days=i % 6, minutes=60)
         resolved = i % 3 == 0
         db.add(Emergency(id=f'SOS-TEST-{i:02}', citizen_id='isolated-fixture', citizen_name='Isolated Browser Fixture', emergency_type=['rescue','medical','evacuation'][i%3], latitude=29.7179 if i%2 else 29.74, longitude=-95.402, people_count=i%4+1, notes='Isolated test fixture', risk_score=[88,65,45,20][i%4], status='resolved' if resolved else 'assigned', responder_id='worker-demo', responder_name='Test Worker', created_at=created, acknowledged_at=created+timedelta(minutes=2), assigned_at=created+timedelta(minutes=4), resolved_at=created+timedelta(minutes=30) if resolved else None, location_updated_at=now-timedelta(seconds=30 if i%2 else 600), accuracy_m=12 if i%2 else 50, is_demo=False))
+    db.add(Emergency(id='SOS-LEGACY', citizen_id='isolated-legacy', citizen_name='Isolated Legacy Fixture', emergency_type='rescue', latitude=29, longitude=-95, people_count=1, notes='Isolated legacy test fixture', status='assigned', responder_id='worker-demo', created_at=now-timedelta(days=30), accuracy_m=35, is_demo=False))
     db.commit()
 uvicorn.run(app, host='127.0.0.1', port=8019, log_level='warning')
 `], { cwd: directory, env: { ...process.env, PYTHONPATH: backend,
@@ -98,13 +99,45 @@ try {
   await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '14');
   console.log('PASS combined filters, empty state, and backend CSV download match');
 
-  for (const name of ['response', 'evacuation', 'alerts', 'after action', 'overview']) {
+  for (const name of ['response', 'evacuation', 'after action', 'overview']) {
     await page.getByRole('tab', { name, exact: true }).click();
     assert.equal(await page.getByRole('tab', { selected: true }).count(), 1);
     assert.ok((await page.getByRole('tabpanel').innerText()).length > 100);
   }
-  await page.getByRole('tab', { name: 'alerts', exact: true }).click();
-  await page.getByText('NOT RECORDED', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('tab', { name: 'alerts', exact: true }).count(), 0);
+  await page.locator('.report-definitions summary').click();
+  await page.getByText('Alert delivery, shelter occupancy, and offline sync analytics are not connected yet', { exact: false }).waitFor();
+  await page.locator('.report-definitions summary').click();
+
+  // Reproduce the user's real condition: one old assigned SOS with no action history.
+  await page.getByLabel('Date range', { exact: true }).selectOption('90');
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '15');
+  await page.getByLabel('GPS location').selectOption('29.000, -95.000');
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '1');
+  assert.deepEqual(await metrics.locator('strong').allTextContents(), ['1', '1', '1', '0', '0', '0']);
+  await page.getByRole('tab', { name: 'response', exact: true }).click();
+  assert.deepEqual(await page.locator('.report-current-status strong').allTextContents(), ['0', '1', '0', '0', '0']);
+  assert.equal(await page.locator('.report-timings').count(), 0, 'No empty timing cards for legacy data');
+  await page.getByText('Response times are not available for this incident.', { exact: true }).waitFor();
+  const legacy = page.locator('tr').filter({ hasText: 'SOS-LEGACY' });
+  assert.match(await legacy.innerText(), /Time not recorded/);
+  assert.match(await legacy.innerText(), /Not resolved/);
+  assert.ok(!await legacy.innerText().then(text => text.includes('—')));
+  if (process.env.TEST_SPARSE_SCREENSHOT_PATH) await page.screenshot({ path: process.env.TEST_SPARSE_SCREENSHOT_PATH, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2), 'Sparse response report fits mobile');
+  await page.setViewportSize({ width: 1680, height: 1050 });
+  await page.getByRole('tab', { name: 'evacuation', exact: true }).click();
+  await page.getByText('No evacuation requests match this selection.', { exact: false }).waitFor();
+  assert.deepEqual(await page.locator('.report-content .report-response-metrics strong').allTextContents(), ['0', '0', '0', '0']);
+  assert.equal(await page.getByRole('heading', { name: 'Safe-zone occupancy' }).count(), 0);
+  await page.getByLabel('GPS location').selectOption('');
+  await page.getByLabel('Date range', { exact: true }).selectOption('7');
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '14');
+  await page.getByRole('tab', { name: 'response', exact: true }).click();
+  assert.equal(await page.locator('.report-timings article').count(), 3, 'Show only acknowledgment, assignment and resolution with recorded samples');
+  assert.equal(await page.locator('.report-history-note').count(), 0);
+  console.log('PASS one legacy SOS shows numeric current statuses, accurate missing-time labels, and no fabricated timing/shelter/alert data');
   await page.getByRole('tab', { name: 'overview', exact: true }).click();
   await page.getByLabel('GPS location').selectOption(expected.locations[0]);
   const count = expected.locations_summary[0].incidents;

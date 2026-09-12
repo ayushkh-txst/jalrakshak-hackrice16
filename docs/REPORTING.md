@@ -2,6 +2,16 @@
 
 The Reports page reads saved operational data from the project's backend. Reference-design numbers are not copied into the product. A fresh installation can legitimately show zero incidents or unavailable measurements.
 
+## Sparse and older records
+
+The summary shows six recorded counts: total incidents, active incidents, people in active incidents, resolved incidents, people in resolved incidents, and critical prototype risk snapshots. Response shows current status counts from the API even when older records have no timestamp history. Average-time cards appear only for milestones with usable recorded samples. A compact explanation replaces empty timing cards when there are none.
+
+Incident tables distinguish **Not assigned**, **Not resolved**, and **Time not recorded**. An old assigned incident retains its known status while its original assignment time stays unknown. Do not reassign incidents or create requests simply to populate a report.
+
+Evacuation zeroes mean no matching evacuation requests; a rescue request does not count as evacuation. Unconnected alert delivery, shelter occupancy, and offline sync sections are omitted from the main reports and listed under **Data sources and missing measurements**. GPS quality uses actual unknown-quality counts instead of an unimplemented offline counter. These display changes do not add the missing data collection integrations.
+
+The browser check also isolates one older assigned SOS without timestamps, matching the sparse-data condition seen during local use, and verifies known status counts, missing-time labels, mobile layout, and the transition back to populated timing metrics. It uses temporary test data only.
+
 ## API
 
 Both endpoints require a valid signed `worker` token (the role used by the admin interface):
