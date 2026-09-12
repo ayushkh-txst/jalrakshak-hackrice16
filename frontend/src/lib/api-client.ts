@@ -46,7 +46,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ApiError(408, "The server took too long to respond.");
     }
-    throw new ApiError(0, "Unable to reach the authentication service.");
+    throw new ApiError(0, "Unable to reach the JalRakshak API.");
   } finally {
     window.clearTimeout(timeout);
   }
