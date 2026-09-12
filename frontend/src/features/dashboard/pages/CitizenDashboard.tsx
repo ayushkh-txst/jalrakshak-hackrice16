@@ -58,9 +58,7 @@ async function reverseGeocodePlace(latitude: number, longitude: number): Promise
       signal: controller.signal,
     });
     if (!response.ok) throw new Error('reverse geocode failed');
-    const payload = await response.json() as {
-      address?: Record<string, string>;
-    };
+    const payload = await response.json() as { address?: Record<string, string> };
     const address = payload.address ?? {};
     const primary = address.ShortLabel || address.Address || address.Match_addr || address.LongLabel || 'Current GPS location';
     const secondaryParts = [address.Neighborhood, address.City, address.Subregion, address.Region]
@@ -70,10 +68,7 @@ async function reverseGeocodePlace(latitude: number, longitude: number): Promise
     placeCache.set(key, result);
     return result;
   } catch {
-    return {
-      primary: 'Current GPS location',
-      secondary: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-    };
+    return { primary: 'Current GPS location', secondary: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` };
   } finally {
     window.clearTimeout(timeout);
   }
@@ -109,7 +104,10 @@ function InteractiveSafetyMap({ center, guidanceActive, route, placeLabel }: { c
   const [showRiskAreas, setShowRiskAreas] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(true);
   const [showRoute, setShowRoute] = useState(true);
+  const [showComparisons, setShowComparisons] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const comparisonRoutes = route?.screened_routes?.filter(candidate => candidate.geometry?.length) ?? [];
+  const hasComparisons = comparisonRoutes.length > 1;
 
   useEffect(() => {
     let map: any;
@@ -149,20 +147,62 @@ function InteractiveSafetyMap({ center, guidanceActive, route, placeLabel }: { c
           .bindPopup(`<strong>${route.destination_name}</strong><br/>Recommended evacuation destination`);
       }
 
+      if (showRoute && showComparisons && comparisonRoutes.length) {
+        comparisonRoutes.forEach((candidate, index) => {
+          if (!candidate.geometry?.length || candidate.status === 'recommended') return;
+          const rejected = candidate.status === 'rejected';
+          const line = L.polyline(candidate.geometry, {
+            color: rejected ? '#c83732' : '#6f7f8f',
+            weight: rejected ? 5 : 4,
+            opacity: rejected ? .9 : .56,
+            dashArray: rejected ? '10 8' : '4 8',
+            lineJoin:'round',
+          }).addTo(map);
+          const reason = candidate.rejection_reasons?.length ? candidate.rejection_reasons.join('<br/>') : 'Higher-ranked route available.';
+          line.bindPopup(`<strong>${rejected ? 'ROUTE REJECTED' : 'VIABLE ALTERNATIVE'}</strong><br/>${reason}<br/>${candidate.duration_s ? formatDuration(candidate.duration_s) : ''}${candidate.distance_m ? ` · ${formatDistance(candidate.distance_m)}` : ''}`);
+          const midpoint = candidate.geometry[Math.floor(candidate.geometry.length / 2)];
+          if (midpoint) {
+            const label = L.divIcon({
+              className: `route-comparison-label ${rejected ? 'rejected' : 'viable'}`,
+              html: `<span>${rejected ? 'REJECTED' : `ALT ${index + 1}`}</span>`,
+              iconSize:[84,24],
+              iconAnchor:[42,12],
+            });
+            L.marker(midpoint, { icon: label, interactive:false }).addTo(map);
+          }
+        });
+      }
+
       if (showRoute && route?.geometry?.length) {
-        const polyline = L.polyline(route.geometry, {
-          color: guidanceActive ? '#4f6f3d' : '#76623a',
-          weight: guidanceActive ? 8 : 6,
-          opacity:.95,
+        L.polyline(route.geometry, {
+          color:'#fffdf9',
+          weight: guidanceActive ? 13 : 12,
+          opacity:.96,
           lineJoin:'round',
         }).addTo(map);
-        polyline.bindPopup('<strong>Recommended evacuation route</strong><br/>Real road geometry from OSRM.');
+        const polyline = L.polyline(route.geometry, {
+          color: guidanceActive ? '#2f6b45' : '#6f571f',
+          weight: guidanceActive ? 9 : 8,
+          opacity:1,
+          lineJoin:'round',
+        }).addTo(map);
+        polyline.bindPopup('<strong>RECOMMENDED ROUTE</strong><br/>JalRakshak selected this route from the analyzed road alternatives.');
+        const midpoint = route.geometry[Math.floor(route.geometry.length / 2)];
+        if (midpoint) {
+          const recommendedLabel = L.divIcon({
+            className:'recommended-route-label',
+            html:'<span>✓ RECOMMENDED</span>',
+            iconSize:[118,28],
+            iconAnchor:[59,14],
+          });
+          L.marker(midpoint, { icon:recommendedLabel, interactive:false }).addTo(map);
+        }
         map.fitBounds(polyline.getBounds(), { padding:[45,45] });
       }
       window.setTimeout(() => map?.invalidateSize(), 80);
     }).catch(() => setMapError(true));
     return () => { disposed = true; if (map) map.remove(); };
-  }, [center.latitude, center.longitude, route, showRiskAreas, showSafeZones, showRoute, guidanceActive, placeLabel.primary, placeLabel.secondary]);
+  }, [center.latitude, center.longitude, route, showRiskAreas, showSafeZones, showRoute, showComparisons, guidanceActive, placeLabel.primary, placeLabel.secondary]);
 
   return <>
     <div ref={containerRef} className="interactive-safety-map" aria-label="Interactive JalRakshak safety map" />
@@ -171,6 +211,7 @@ function InteractiveSafetyMap({ center, guidanceActive, route, placeLabel }: { c
       <button type="button" className={showRiskAreas ? 'active' : ''} onClick={() => setShowRiskAreas(v => !v)}>Risk areas</button>
       <button type="button" className={showSafeZones ? 'active' : ''} onClick={() => setShowSafeZones(v => !v)}>Safe zones</button>
       <button type="button" className={showRoute ? 'active' : ''} onClick={() => setShowRoute(v => !v)}>Route</button>
+      {hasComparisons && <button type="button" className={`compare-routes-control ${showComparisons ? 'active compare-active' : ''}`} onClick={() => setShowComparisons(v => !v)}>{showComparisons ? 'Hide comparisons' : 'Compare routes'}</button>}
     </div>
   </>;
 }
@@ -213,16 +254,13 @@ export default function CitizenDashboard() {
     const key = routeCacheKey(latitude, longitude);
     const cached = routeCache.get(key);
     const cacheIsFresh = cached && Date.now() - cached.savedAt < ROUTE_CACHE_TTL_MS;
-
     if (cacheIsFresh && cached) {
       setRouteData(cached.route);
       setRouteFreshness('cached');
       setRouteError('');
     }
-
     setRouteLoading(true);
     if (!cacheIsFresh) setRouteError('');
-
     try {
       const route = await citizenSafetyApi.getEvacuationRoute(latitude, longitude);
       routeCache.set(key, { route, savedAt: Date.now() });
@@ -237,9 +275,7 @@ export default function CitizenDashboard() {
         setRouteError('Live refresh is slow, so JalRakshak is keeping the recent cached route visible.');
       } else {
         setRouteFreshness(routeData ? 'cached' : 'unavailable');
-        setRouteError(routeData
-          ? 'Live routing is temporarily slow. Keeping the last successful route on screen.'
-          : `${message} The map is still interactive — retry routing when ready.`);
+        setRouteError(routeData ? 'Live routing is temporarily slow. Keeping the last successful route on screen.' : `${message} The map is still interactive — retry routing when ready.`);
       }
     } finally {
       setRouteLoading(false);
@@ -278,61 +314,23 @@ export default function CitizenDashboard() {
 
   const renderOverview = () => <>
     <div className="figma-confidence-strip"><span className="confidence-dot"/><strong>HIGH CONFIDENCE</strong><span>+9m</span><span>·</span><span>12 sec ago</span></div>
-    <section className="figma-risk-card">
-      <div className="figma-risk-header"><div><span className="risk-header-dot"/> CRITICAL · FLOOD RISK</div><span>Risk increasing rapidly</span></div>
-      <div className="figma-risk-body"><div className="warning-window"><span>ESTIMATED WARNING WINDOW</span><strong>~58 min</strong><p>Act before this window closes</p></div><div className="risk-score-ring"><div><strong>87</strong><span>/ 100</span></div></div><div className="risk-score-label">FLOOD RISK</div></div>
-      <div className="risk-divider"/><div className="factor-section"><span className="factor-title">CONTRIBUTING FACTORS</span><div className="factor-row"><span>🌧️</span><strong>Heavy forecast rainfall</strong><em>+48mm in 6 hrs</em></div><div className="factor-row"><span>🌊</span><strong>Rising river level</strong><em>Bagmati +1.2m since 06:00</em></div><div className="factor-row"><span>🚧</span><strong>Road access degrading</strong><em>2 routes blocked</em></div></div>
-    </section>
+    <section className="figma-risk-card"><div className="figma-risk-header"><div><span className="risk-header-dot"/> CRITICAL · FLOOD RISK</div><span>Risk increasing rapidly</span></div><div className="figma-risk-body"><div className="warning-window"><span>ESTIMATED WARNING WINDOW</span><strong>~58 min</strong><p>Act before this window closes</p></div><div className="risk-score-ring"><div><strong>87</strong><span>/ 100</span></div></div><div className="risk-score-label">FLOOD RISK</div></div><div className="risk-divider"/><div className="factor-section"><span className="factor-title">CONTRIBUTING FACTORS</span><div className="factor-row"><span>🌧️</span><strong>Heavy forecast rainfall</strong><em>+48mm in 6 hrs</em></div><div className="factor-row"><span>🌊</span><strong>Rising river level</strong><em>Bagmati +1.2m since 06:00</em></div><div className="factor-row"><span>🚧</span><strong>Road access degrading</strong><em>2 routes blocked</em></div></div></section>
     <section className="figma-safe-card"><div className="safe-card-top"><div><span className="safe-eyebrow">RECOMMENDED SAFE DESTINATION</span><h2>{routeData?.destination_name ?? 'Shree Secondary School'}</h2><p>{routeData ? `◷ ${formatDuration(routeData.duration_s)}   ${formatDistance(routeData.distance_m)}` : '◷ 13 min   920 m   Capacity 61%'}</p></div><span className="low-risk-pill">LOW RISK</span></div><div className="safe-capacity-track"><span/></div><div className="safe-actions"><button type="button" className="figma-primary" onClick={openGuide}>GUIDE ME</button><button type="button" className="figma-secondary" onClick={() => setShowRouteReasons(v => !v)}>WHY THIS?</button></div></section>
     <section className="figma-quick-card"><span className="quick-title">QUICK ACTIONS</span><div><button type="button" onClick={() => setActiveNav('Live Map')}>🗺️ <span>View Safety Map</span></button><button type="button">🏫 <span>All Destinations</span></button></div></section>
   </>;
 
   const renderLiveMap = () => <section className={`live-map-screen ${guidanceActive ? 'guidance-active' : ''}`}>
     <div className="map-page-heading"><div><span className="safe-eyebrow">LIVE SAFETY MAP</span><h1>{guidanceActive ? 'Evacuation guidance' : 'Safest route around you'}</h1><p>{browserLocation ? `You are near ${placeLabel.primary}. Street and neighborhood names stay visible while JalRakshak calculates the route.` : 'Use your location to calculate a nearby real-road evacuation route.'}</p></div><button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button></div>
-
     {guidanceActive && currentGuidance && <section className={`guidance-banner ${guidanceComplete ? 'complete' : ''}`}><div className="guidance-banner-icon">{guidanceComplete ? '✓' : '➜'}</div><div className="guidance-banner-copy"><span>{guidanceComplete ? 'DESTINATION REACHED' : `STEP ${guidanceStep + 1} OF ${dynamicSteps.length}`}</span><strong>{currentGuidance.title}</strong><p>{currentGuidance.detail}</p></div><div className="guidance-banner-metrics"><strong>{currentGuidance.distance}</strong><span>{currentGuidance.eta}</span></div><div className="guidance-progress"><span style={{width:`${guidanceProgress}%`}}/></div></section>}
-
-    <div className="map-status-row">
-      <span><i className="status-dot green"/> {locationStatus}</span>
-      {browserLocation && <span className="place-status-pill"><i className="status-dot blue"/> {placeLabel.primary}</span>}
-      <span><i className={`status-dot ${routeFreshness === 'live' ? 'green' : routeFreshness === 'cached' ? 'gold' : 'blue'}`}/>{routeLoading ? 'Updating safest route in background…' : routeData ? `${routeData.alternatives_considered} route options considered` : 'Map ready · route not calculated'}</span>
-      {guidanceActive && <span className="navigation-live"><i className="status-dot blue"/> Navigation active</span>}
-    </div>
-
+    <div className="map-status-row"><span><i className="status-dot green"/> {locationStatus}</span>{browserLocation && <span className="place-status-pill"><i className="status-dot blue"/> {placeLabel.primary}</span>}<span><i className={`status-dot ${routeFreshness === 'live' ? 'green' : routeFreshness === 'cached' ? 'gold' : 'blue'}`}/>{routeLoading ? 'Updating safest route in background…' : routeData ? `${routeData.alternatives_considered} route options considered` : 'Map ready · route not calculated'}</span>{guidanceActive && <span className="navigation-live"><i className="status-dot blue"/> Navigation active</span>}</div>
     {routeError && <div className="route-status-banner" role="status"><span>⚡</span><p>{routeError}</p><button type="button" onClick={retryRoute}>Retry route</button></div>}
-
-    <div className="map-layout">
-      <div className="map-panel">
-        <InteractiveSafetyMap center={mapCenter} guidanceActive={guidanceActive} route={routeData} placeLabel={placeLabel}/>
-        <div className="map-overlay-card map-you"><strong>YOU ARE HERE</strong><span className="map-place-name">{placeLabel.primary}</span><span className="map-place-subtitle">{placeLabel.secondary}</span><span className="map-place-coordinates">{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span></div>
-        {routeLoading && <div className="route-calculating-chip" role="status"><span className="route-spinner"/>Calculating safest route… <small>Map stays interactive</small></div>}
-        <div className="map-overlay-card map-risk-legend"><span><i className="legend-swatch route"/> Recommended route</span><span><i className="legend-swatch safe"/> Safe destination</span></div>
-      </div>
-      <aside className="route-panel">
-        <span className="safe-eyebrow">{guidanceActive ? 'ACTIVE GUIDANCE' : 'RECOMMENDED EVACUATION'}</span>
-        <h2>{routeData?.destination_name ?? (routeLoading ? 'Finding a safe destination…' : 'Use your location first')}</h2>
-        {browserLocation && <div className="route-origin-card"><span>STARTING FROM</span><strong>{placeLabel.primary}</strong><small>{placeLabel.secondary}</small></div>}
-        <div className="route-metrics"><div><strong>{routeData ? formatDuration(routeData.duration_s) : '—'}</strong><span>ETA</span></div><div><strong>{routeData ? formatDistance(routeData.distance_m) : '—'}</strong><span>Distance</span></div><div><strong>{routeData ? `${routeData.prototype_safety_score}/100` : '—'}</strong><span>Prototype safety</span></div></div>
-        <div className={`route-safety-note ${routeFreshness === 'cached' ? 'cached-route-note' : ''}`}><strong>{routeData ? (routeFreshness === 'cached' ? '✓ Recent route kept on screen' : '✓ Real road route calculated') : 'Waiting for current GPS'}</strong><p>{routeData ? `Compared ${routeData.alternatives_considered} road/destination options. Safety score is a prototype heuristic, not an official flood-clearance rating.` : 'Tap Use my location to find nearby facilities and calculate road routes.'}</p></div>
-        {routeData && <button type="button" className="figma-secondary why-route-button" onClick={() => setShowRouteReasons(v => !v)}>WHY THIS ROUTE?</button>}
-        {showRouteReasons && routeData && <div className="route-safety-note"><strong>Why JalRakshak chose this</strong>{routeData.reasons.map(reason => <p key={reason}>• {reason}</p>)}<p><b>Source:</b> {routeData.source}</p><p>{routeData.warning}</p></div>}
-        <div className="route-steps">{routeData ? dynamicSteps.slice(0,6).map((step,index)=><div key={`${step.title}-${index}`} className={`${guidanceActive && index===guidanceStep?'current-step':''} ${guidanceActive && index<guidanceStep?'completed-step':''}`}><b>{guidanceActive&&index<guidanceStep?'✓':index+1}</b><span><strong>{step.title}</strong><small>{step.detail}</small></span></div>) : <div className="route-empty-state"><b>…</b><span><strong>Map is ready</strong><small>Routing loads separately so you can keep panning and zooming.</small></span></div>}</div>
-        {!guidanceActive ? <button type="button" className="figma-primary route-start" onClick={startGuidance} disabled={!routeData}>START GUIDANCE</button> : guidanceComplete ? <button type="button" className="figma-primary route-start guidance-finish" onClick={stopGuidance}>FINISH GUIDANCE</button> : <div className="guidance-actions"><button type="button" className="figma-primary route-start" onClick={advanceGuidance}>NEXT STEP</button><button type="button" className="figma-secondary guidance-stop" onClick={stopGuidance}>END GUIDANCE</button></div>}
-        <button type="button" className="figma-danger-button route-help" onClick={requestHelp}>I CAN'T EVACUATE — GET HELP</button>
-      </aside>
-    </div>
+    <div className="map-layout"><div className="map-panel"><InteractiveSafetyMap center={mapCenter} guidanceActive={guidanceActive} route={routeData} placeLabel={placeLabel}/><div className="map-overlay-card map-you"><strong>YOU ARE HERE</strong><span className="map-place-name">{placeLabel.primary}</span><span className="map-place-subtitle">{placeLabel.secondary}</span><span className="map-place-coordinates">{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span></div>{routeLoading && <div className="route-calculating-chip" role="status"><span className="route-spinner"/>Calculating safest route… <small>Map stays interactive</small></div>}<div className="map-overlay-card map-risk-legend"><span><i className="legend-swatch route"/> Recommended route</span>{routeData?.screened_routes?.some(item => item.status === 'rejected') && <span><i className="legend-swatch rejected-route"/> Rejected route</span>}{routeData?.screened_routes?.some(item => item.status === 'viable') && <span><i className="legend-swatch viable-route"/> Viable alternative</span>}<span><i className="legend-swatch safe"/> Safe destination</span></div></div>
+      <aside className="route-panel"><span className="safe-eyebrow">{guidanceActive ? 'ACTIVE GUIDANCE' : 'RECOMMENDED EVACUATION'}</span><h2>{routeData?.destination_name ?? (routeLoading ? 'Finding a safe destination…' : 'Use your location first')}</h2>{browserLocation && <div className="route-origin-card"><span>STARTING FROM</span><strong>{placeLabel.primary}</strong><small>{placeLabel.secondary}</small></div>}<div className="route-metrics"><div><strong>{routeData ? formatDuration(routeData.duration_s) : '—'}</strong><span>ETA</span></div><div><strong>{routeData ? formatDistance(routeData.distance_m) : '—'}</strong><span>Distance</span></div><div><strong>{routeData ? `${routeData.prototype_safety_score}/100` : '—'}</strong><span>Prototype safety</span></div></div><div className={`route-safety-note ${routeFreshness === 'cached' ? 'cached-route-note' : ''}`}><strong>{routeData ? (routeFreshness === 'cached' ? '✓ Recent route kept on screen' : '✓ Real road route calculated') : 'Waiting for current GPS'}</strong><p>{routeData ? `Compared ${routeData.alternatives_considered} road/destination options. Safety score is a prototype heuristic, not an official flood-clearance rating.` : 'Tap Use my location to find nearby facilities and calculate road routes.'}</p></div>{routeData && <button type="button" className="figma-secondary why-route-button" onClick={() => setShowRouteReasons(v => !v)}>WHY THIS ROUTE?</button>}{showRouteReasons && routeData && <div className="route-safety-note"><strong>Why JalRakshak chose this</strong>{routeData.reasons.map(reason => <p key={reason}>• {reason}</p>)}<p><b>Source:</b> {routeData.source}</p><p>{routeData.warning}</p></div>}<div className="route-steps">{routeData ? dynamicSteps.slice(0,6).map((step,index)=><div key={`${step.title}-${index}`} className={`${guidanceActive && index===guidanceStep?'current-step':''} ${guidanceActive && index<guidanceStep?'completed-step':''}`}><b>{guidanceActive&&index<guidanceStep?'✓':index+1}</b><span><strong>{step.title}</strong><small>{step.detail}</small></span></div>) : <div className="route-empty-state"><b>…</b><span><strong>Map is ready</strong><small>Routing loads separately so you can keep panning and zooming.</small></span></div>}</div>{!guidanceActive ? <button type="button" className="figma-primary route-start" onClick={startGuidance} disabled={!routeData}>START GUIDANCE</button> : guidanceComplete ? <button type="button" className="figma-primary route-start guidance-finish" onClick={stopGuidance}>FINISH GUIDANCE</button> : <div className="guidance-actions"><button type="button" className="figma-primary route-start" onClick={advanceGuidance}>NEXT STEP</button><button type="button" className="figma-secondary guidance-stop" onClick={stopGuidance}>END GUIDANCE</button></div>}<button type="button" className="figma-danger-button route-help" onClick={requestHelp}>I CAN'T EVACUATE — GET HELP</button></aside></div>
     <div className="map-bottom-cards"><article><span>📍</span><div><strong>{browserLocation ? placeLabel.primary : 'Location names ready'}</strong><small>{browserLocation ? placeLabel.secondary : 'Use GPS to identify your road and neighborhood'}</small></div></article><article><span>🏫</span><div><strong>{routeData?.destination_name ?? 'Nearby facility lookup'}</strong><small>{routeData ? routeData.destination_type.replace('_',' ') : 'OpenStreetMap facilities'}</small></div></article><article><span>📡</span><div><strong>{routeFreshness === 'cached' ? 'Recent route fallback active' : guidanceActive ? 'Guidance mode active' : 'Routing services connected'}</strong><small>{routeFreshness === 'cached' ? 'Refreshing live route in background' : 'OpenStreetMap + OSRM'}</small></div></article></div>
   </section>;
 
-  const renderSecondaryPanel = () => {
-    if (activeNav === 'Emergency Help') return <CitizenEmergencyHelp citizenId={session?.user.id ?? 'citizen-demo'} citizenName={displayName} fallbackLatitude={mapCenter.latitude} fallbackLongitude={mapCenter.longitude} onBack={() => setActiveNav('Overview')}/>;
-    return <section className="figma-placeholder-panel"><span className="safe-eyebrow">{activeNav.toUpperCase()}</span><h2>{activeNav}</h2><p>{`${activeNav} is the next Citizen module to connect. The application shell and navigation are now in place.`}</p><button type="button" className="figma-secondary back-overview" onClick={() => setActiveNav('Overview')}>Back to overview</button></section>;
-  };
+  const renderSecondaryPanel = () => { if (activeNav === 'Emergency Help') return <CitizenEmergencyHelp citizenId={session?.user.id ?? 'citizen-demo'} citizenName={displayName} fallbackLatitude={mapCenter.latitude} fallbackLongitude={mapCenter.longitude} onBack={() => setActiveNav('Overview')}/>; return <section className="figma-placeholder-panel"><span className="safe-eyebrow">{activeNav.toUpperCase()}</span><h2>{activeNav}</h2><p>{`${activeNav} is the next Citizen module to connect. The application shell and navigation are now in place.`}</p><button type="button" className="figma-secondary back-overview" onClick={() => setActiveNav('Overview')}>Back to overview</button></section>; };
   const renderActiveScreen = () => activeNav === 'Overview' ? renderOverview() : activeNav === 'Live Map' ? renderLiveMap() : renderSecondaryPanel();
 
-  return <main className="figma-citizen-app">
-    <aside className="figma-sidebar"><div className="sidebar-brand-row"><div className="sidebar-logo">⌄</div><div><strong>JalRakshak</strong><span>Citizen Safety</span></div><button type="button" className="collapse-button" aria-label="Collapse navigation">‹</button></div><div className="citizen-badge">CITIZEN</div><nav className="figma-nav" aria-label="Citizen navigation">{navItems.map(item => <button key={item.label} type="button" className={`${activeNav===item.label?'active':''} ${item.label==='Emergency Help'?'emergency-nav':''} ${item.muted?'muted-nav':''}`} onClick={() => setActiveNav(item.label)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.badge?<b>{item.badge}</b>:null}</button>)}</nav><div className="sidebar-user"><div className="user-avatar">{initials}</div><div><strong>{displayName}</strong><span>Citizen User</span></div><button type="button" onClick={signOut} title="Sign out">↪</button></div></aside>
-    <section className="figma-main-shell"><header className="figma-topbar"><div className="location-line">⌖ &nbsp; {browserLocation ? `${placeLabel.primary} · ${placeLabel.secondary}` : 'Bagmati Valley, Sindhupalchowk'} &nbsp;·&nbsp; LIVE</div><div className="topbar-controls"><span className="live-status"><i/><i/> LIVE</span><button type="button" className="topbar-icon" aria-label="Notifications">♢<b>1</b></button><button type="button" className="language-button">EN</button><span className="topbar-avatar">{initials}</span></div></header><div className="figma-page-content">{renderActiveScreen()}</div></section>
-    {showCriticalAlert && activeNav==='Overview' && <div className="critical-modal-backdrop" role="presentation"><section className="critical-modal" role="dialog" aria-modal="true" aria-labelledby="critical-alert-title"><div className="critical-modal-accent"/><div className="critical-modal-title-row"><div className="critical-icon">△</div><div><span>CRITICAL FLOOD WARNING</span><h2 id="critical-alert-title">Your area has entered a critical flood-risk state</h2></div></div><div className="critical-score-box"><div><span>RISK SCORE</span><strong>87</strong></div><div><span>UPDATED</span><strong>just now</strong></div></div><p className="critical-copy"><strong>Recommended action:</strong> Begin evacuation toward your assigned safe destination immediately.</p><button type="button" className="critical-guide" onClick={openGuide}>GUIDE ME</button><div className="critical-actions"><button type="button" className="critical-help" onClick={requestHelp}>I NEED HELP</button><button type="button" className="critical-details" onClick={() => setShowCriticalAlert(false)}>View Details</button></div></section></div>}
-  </main>;
+  return <main className="figma-citizen-app"><aside className="figma-sidebar"><div className="sidebar-brand-row"><div className="sidebar-logo">⌄</div><div><strong>JalRakshak</strong><span>Citizen Safety</span></div><button type="button" className="collapse-button" aria-label="Collapse navigation">‹</button></div><div className="citizen-badge">CITIZEN</div><nav className="figma-nav" aria-label="Citizen navigation">{navItems.map(item => <button key={item.label} type="button" className={`${activeNav===item.label?'active':''} ${item.label==='Emergency Help'?'emergency-nav':''} ${item.muted?'muted-nav':''}`} onClick={() => setActiveNav(item.label)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.badge?<b>{item.badge}</b>:null}</button>)}</nav><div className="sidebar-user"><div className="user-avatar">{initials}</div><div><strong>{displayName}</strong><span>Citizen User</span></div><button type="button" onClick={signOut} title="Sign out">↪</button></div></aside><section className="figma-main-shell"><header className="figma-topbar"><div className="location-line">⌖ &nbsp; {browserLocation ? `${placeLabel.primary} · ${placeLabel.secondary}` : 'Bagmati Valley, Sindhupalchowk'} &nbsp;·&nbsp; LIVE</div><div className="topbar-controls"><span className="live-status"><i/><i/> LIVE</span><button type="button" className="topbar-icon" aria-label="Notifications">♢<b>1</b></button><button type="button" className="language-button">EN</button><span className="topbar-avatar">{initials}</span></div></header><div className="figma-page-content">{renderActiveScreen()}</div></section>{showCriticalAlert && activeNav==='Overview' && <div className="critical-modal-backdrop" role="presentation"><section className="critical-modal" role="dialog" aria-modal="true" aria-labelledby="critical-alert-title"><div className="critical-modal-accent"/><div className="critical-modal-title-row"><div className="critical-icon">△</div><div><span>CRITICAL FLOOD WARNING</span><h2 id="critical-alert-title">Your area has entered a critical flood-risk state</h2></div></div><div className="critical-score-box"><div><span>RISK SCORE</span><strong>87</strong></div><div><span>UPDATED</span><strong>just now</strong></div></div><p className="critical-copy"><strong>Recommended action:</strong> Begin evacuation toward your assigned safe destination immediately.</p><button type="button" className="critical-guide" onClick={openGuide}>GUIDE ME</button><div className="critical-actions"><button type="button" className="critical-help" onClick={requestHelp}>I NEED HELP</button><button type="button" className="critical-details" onClick={() => setShowCriticalAlert(false)}>View Details</button></div></section></div>}</main>;
 }
