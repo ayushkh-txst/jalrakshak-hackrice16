@@ -15,6 +15,7 @@ let listening = false;
 let crisisMode = false;
 let lastLocationKey = '';
 let refreshTimer: number | null = null;
+let lastRouteNoticeKey = '';
 
 function createMessage(role: Message['role'], text: string): Message {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, role, text, createdAt: Date.now() };
@@ -47,6 +48,11 @@ function saveHistory() {
 function navButton(label: string): HTMLButtonElement | null {
   return [...document.querySelectorAll<HTMLButtonElement>('.figma-nav button')]
     .find((button) => button.textContent?.trim().includes(label)) ?? null;
+}
+
+function citizenName() {
+  const full = document.querySelector<HTMLElement>('.sidebar-user strong')?.textContent?.trim();
+  return full || 'there';
 }
 
 function locationLabel() {
@@ -97,11 +103,38 @@ function contextSummary() {
 }
 
 function safeReply(input: string): string {
-  const text = input.toLowerCase();
+  const raw = input.trim();
+  const text = raw.toLowerCase();
+  const name = citizenName();
   const place = locationLabel();
   const risk = latestSafety;
   const route = latestRoute;
   const emergency = latestEmergency;
+
+  if (/^(hi|hello|hey|hiya|good morning|good afternoon|good evening)[!.,?\s]*$/i.test(raw)) {
+    return `Hello ${name}. How can I help you today? I can check your current risk, weather, safest route, or responder status, or stay with you and guide you if you need help.`;
+  }
+
+  if (/^(how are you|how's it going|how is it going)[!.,?\s]*$/i.test(raw)) {
+    return `I’m ready to help, ${name}. If you want, I can check what is happening around you right now or help you plan the safest next step.`;
+  }
+
+  if (/(what can you do|what do you do|help me understand|who are you)/i.test(text)) {
+    return `I’m JalRakshak AI. I stay focused on flood safety: live risk and weather context, evacuation routes, route changes, SOS and responder updates, and calm step-by-step guidance before, during, and after an incident.`;
+  }
+
+  if (/^(thanks|thank you|thx|ty)[!.,?\s]*$/i.test(raw)) {
+    if (emergency?.status === 'resolved') {
+      return `You’re welcome, ${name}. I’m glad the response is complete. Take a moment to settle somewhere safe, stay with people you trust if you can, and let me know if you want a weather update, recovery guidance, or just to talk for a bit.`;
+    }
+    return `You’re welcome, ${name}. I’m here whenever you need another safety check or direction.`;
+  }
+
+  const afterEvent = emergency?.status === 'resolved' || /(i'm safe now|i am safe now|we are safe|we're safe|it's over|it is over|after the flood|what now|response is complete|rescued)/i.test(text);
+  if (afterEvent) {
+    crisisMode = false;
+    return `I’m glad you reached a safer point, ${name}. You do not have to rush into the next thing. Stay in a safe place, check whether anyone with you needs help, and keep an eye on official updates before traveling again. I can also check the latest weather, route conditions, or stay and talk with you.`;
+  }
 
   const distress = /(scared|panic|afraid|terrified|shaking|overwhelmed|flood water|went through|in the water|stuck|trapped)/i.test(text);
   if (distress) crisisMode = true;
@@ -114,7 +147,7 @@ function safeReply(input: string): string {
   }
   if (/(scared|panic|afraid|terrified|shaking|overwhelmed)/i.test(text)) {
     const routeLine = route ? `Your current recommended destination is ${route.destination_name}.` : 'I can help you open the safety map and find a route.';
-    return `I’m with you. Focus on one thing at a time. ${routeLine} I can give you short directions, read them aloud, and help you contact a responder if you cannot move safely.`;
+    return `I’m with you, ${name}. Focus on one thing at a time. ${routeLine} I can give you short directions, read them aloud, and help you contact a responder if you cannot move safely.`;
   }
   if (/(am i safe|my risk|risk right now|safe right now)/i.test(text)) {
     if (!risk) return `I don't have a fresh risk reading yet. Use your location on the Live Map and I can interpret the current rainfall, river, and route context.`;
@@ -134,9 +167,9 @@ function safeReply(input: string): string {
     const reasons = route.reasons?.slice(0,2).join(' ') || 'It ranked highest among the available road options.';
     return `JalRakshak compared ${route.alternatives_considered} route options.${counts} The selected route goes to ${route.destination_name}. ${reasons}`;
   }
-  if (/(route changed|reroute|still safe|route update)/i.test(text)) {
+  if (/(route changed|reroute|still safe|route update|changed midway|change my plan)/i.test(text)) {
     if (!route) return `No current route is loaded. Open the Live Map to calculate one.`;
-    return `Your recommended route is still ${route.destination_name}. JalRakshak currently shows ${route.alternatives_considered} analyzed option${route.alternatives_considered === 1 ? '' : 's'}. If your GPS or hazard context changes, recalculate before continuing.`;
+    return `The latest recommended plan is ${route.destination_name}, about ${formatDistance(route.distance_m)} away. If JalRakshak receives a new route analysis while you are moving, I’ll tell you here and the plan can be updated instead of keeping you on an older route.`;
   }
   if (/(responder|sos|help.*way|response status)/i.test(text)) {
     if (!emergency) return `I don't see an active citizen SOS right now. If you need help, I can open Emergency Help.`;
@@ -148,8 +181,9 @@ function safeReply(input: string): string {
     const first = route.steps?.[0]?.instruction;
     return `I can guide you to ${route.destination_name}. ${first ? `First: ${first}.` : ''} Open guidance and I’ll keep the directions short and readable aloud.`;
   }
+
   const summary = contextSummary();
-  return `I can help with your risk, weather, safest route, responder status, or emergency assistance. Right now your modeled risk is ${summary.risk}, your route is ${summary.route}, and responder status is ${summary.response}.`;
+  return `I can help with your flood-safety situation, ${name}. Right now your modeled risk is ${summary.risk}, your route is ${summary.route}, and responder status is ${summary.response}. You can ask me naturally about what to do next.`;
 }
 
 function formatDistance(meters: number) {
@@ -200,10 +234,14 @@ function renderAssistant(section: HTMLElement) {
   }, 0);
 }
 
-function addUserMessage(section: HTMLElement, text: string) {
+async function addUserMessage(section: HTMLElement, text: string) {
   const cleaned = text.trim();
   if (!cleaned) return;
   messages.push(createMessage('user', cleaned));
+  saveHistory();
+  renderAssistant(section);
+
+  await refreshContext();
   const reply = safeReply(cleaned);
   messages.push(createMessage('assistant', reply));
   saveHistory();
@@ -243,23 +281,18 @@ function startVoice(section: HTMLElement) {
   recognition.onresult = (event: any) => {
     const text = event.results?.[0]?.[0]?.transcript ?? '';
     listening = false;
-    addUserMessage(section, text);
+    void addUserMessage(section, text);
   };
   recognition.onerror = () => { listening = false; renderAssistant(section); };
   recognition.onend = () => { if (listening) { listening = false; renderAssistant(section); } };
   recognition.start();
 }
 
-function openMap(startGuide = false) {
-  navButton('Live Map')?.click();
-  if (startGuide) window.setTimeout(() => document.querySelector<HTMLButtonElement>('.route-start:not(:disabled)')?.click(), 500);
-}
-
 function wireAssistant(section: HTMLElement) {
   section.querySelector<HTMLFormElement>('.ai-input-row')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const input = section.querySelector<HTMLInputElement>('[data-ai-input]');
-    if (input) addUserMessage(section, input.value);
+    if (input) void addUserMessage(section, input.value);
   });
   section.querySelector<HTMLButtonElement>('[data-ai-mic]')?.addEventListener('click', () => startVoice(section));
   section.querySelector<HTMLButtonElement>('[data-ai-voice]')?.addEventListener('click', () => {
@@ -277,7 +310,7 @@ function wireAssistant(section: HTMLElement) {
       risk:'Am I safe right now?', route:'Where should I evacuate?', explain:'Why did you choose this route?', weather:'Is the rain dangerous right now?',
       responder:'What is my responder status?', scared:"I'm scared and I need you to stay with me.", stuck:"I'm stuck and I can't evacuate.", medical:'I need medical help.', guide:'Guide me to safety.',
     };
-    addUserMessage(section, prompts[button.dataset.aiQuick ?? ''] ?? button.textContent ?? '');
+    void addUserMessage(section, prompts[button.dataset.aiQuick ?? ''] ?? button.textContent ?? '');
   }));
 }
 
@@ -297,9 +330,35 @@ function maybeEnhanceAssistant() {
 }
 
 window.addEventListener('jalrakshak:route-analysis', (event) => {
-  latestRoute = (event as CustomEvent<EvacuationRoute>).detail;
+  const nextRoute = (event as CustomEvent<EvacuationRoute>).detail;
+  const previousRoute = latestRoute;
+  latestRoute = nextRoute;
+
+  const routeNoticeKey = `${nextRoute.destination_name}|${Math.round(nextRoute.distance_m)}|${Math.round(nextRoute.duration_s)}`;
+  const materiallyChanged = Boolean(
+    previousRoute &&
+    previousRoute.screening_status === 'complete' &&
+    nextRoute.screening_status === 'complete' &&
+    (
+      previousRoute.destination_name !== nextRoute.destination_name ||
+      Math.abs(previousRoute.distance_m - nextRoute.distance_m) > Math.max(120, previousRoute.distance_m * 0.1) ||
+      Math.abs(previousRoute.duration_s - nextRoute.duration_s) > Math.max(60, previousRoute.duration_s * 0.1)
+    )
+  );
+
   const screen = document.querySelector<HTMLElement>('.citizen-ai-screen');
-  if (screen) renderAssistant(screen);
+  if (materiallyChanged && routeNoticeKey !== lastRouteNoticeKey) {
+    lastRouteNoticeKey = routeNoticeKey;
+    const update = `Route update, ${citizenName()}: your plan was recalculated. The latest recommended route is now ${nextRoute.destination_name}, about ${formatDistance(nextRoute.distance_m)} away and ${Math.max(1, Math.round(nextRoute.duration_s / 60))} minutes. Follow the newest guidance rather than the older route.`;
+    messages.push(createMessage('assistant', update));
+    saveHistory();
+    if (screen) {
+      renderAssistant(screen);
+      speak(update);
+    }
+  } else if (screen) {
+    renderAssistant(screen);
+  }
 });
 window.addEventListener('online', maybeEnhanceAssistant);
 window.addEventListener('load', maybeEnhanceAssistant);
