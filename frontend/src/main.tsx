@@ -22,6 +22,7 @@ import './features/dashboard/command-center-enhancer';
 import './features/dashboard/command-center-enhancer.css';
 import './features/dashboard/admin-dashboard-detail-enhancer';
 import './features/dashboard/admin-dashboard-detail-enhancer.css';
+import './features/dashboard/admin-dashboard-figma-fixes.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
