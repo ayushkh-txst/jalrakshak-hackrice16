@@ -80,13 +80,18 @@ function syncActiveSession() {
   saveSessions(sessions);
 }
 
+function refreshHistoryControls() {
+  const controls = document.querySelector<HTMLElement>('.ai-history-controls');
+  if (controls) delete controls.dataset.navcatHistorySignature;
+  window.setTimeout(applyHistoryUi, 0);
+}
+
 function newChat() {
   syncActiveSession();
   let sessions = readSessions();
   const currentId = localStorage.getItem(ACTIVE_SESSION_KEY);
   const current = sessions.find((session) => session.id === currentId);
 
-  // Do not clutter history with unused blank chats.
   if (current && !hasUserMessage(current.messages ?? [])) {
     sessions = sessions.filter((session) => session.id !== current.id);
   }
@@ -99,19 +104,26 @@ function newChat() {
   sessionStorage.removeItem(DRAFT_KEY);
   draft = '';
   historyOpen = false;
-  window.location.reload();
+
+  window.dispatchEvent(new CustomEvent('jalrakshak:navcat-new-chat'));
+  refreshHistoryControls();
 }
 
 function openSession(id: string) {
   syncActiveSession();
   const session = readSessions().find((s) => s.id === id);
   if (!session) return;
+
   localStorage.setItem(ACTIVE_SESSION_KEY, id);
   localStorage.setItem(ACTIVE_HISTORY_KEY, JSON.stringify(session.messages ?? []));
   sessionStorage.removeItem(DRAFT_KEY);
   draft = '';
   historyOpen = false;
-  window.location.reload();
+
+  window.dispatchEvent(new CustomEvent('jalrakshak:navcat-load-session', {
+    detail: { messages: session.messages ?? [] },
+  }));
+  refreshHistoryControls();
 }
 
 function deleteSession(id: string) {
@@ -124,14 +136,16 @@ function deleteSession(id: string) {
     localStorage.setItem(ACTIVE_SESSION_KEY, next.id);
     localStorage.setItem(ACTIVE_HISTORY_KEY, JSON.stringify(next.messages ?? []));
     saveSessions(sessions);
-    window.location.reload();
+    historyOpen = false;
+    window.dispatchEvent(new CustomEvent('jalrakshak:navcat-load-session', {
+      detail: { messages: next.messages ?? [] },
+    }));
+    refreshHistoryControls();
     return;
   }
 
   saveSessions(sessions);
-  const controls = document.querySelector<HTMLElement>('.ai-history-controls');
-  if (controls) delete controls.dataset.navcatHistorySignature;
-  applyHistoryUi();
+  refreshHistoryControls();
 }
 
 function escapeHtml(value: string) {
@@ -139,9 +153,8 @@ function escapeHtml(value: string) {
 }
 
 function visibleHistorySessions() {
-  const activeId = ensureActiveSession();
   return readSessions()
-    .filter((session) => session.id === activeId ? hasUserMessage(session.messages ?? []) : hasUserMessage(session.messages ?? []))
+    .filter((session) => hasUserMessage(session.messages ?? []))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -262,9 +275,7 @@ document.addEventListener('submit', (event) => {
   sessionStorage.removeItem(DRAFT_KEY);
   window.setTimeout(() => {
     syncActiveSession();
-    const controls = document.querySelector<HTMLElement>('.ai-history-controls');
-    if (controls) delete controls.dataset.navcatHistorySignature;
-    applyHistoryUi();
+    refreshHistoryControls();
   }, 120);
 }, true);
 
@@ -272,9 +283,7 @@ document.addEventListener('click', (event) => {
   const target = event.target as HTMLElement | null;
   if (!target?.closest('.navcat-history-shell') && historyOpen) {
     historyOpen = false;
-    const controls = document.querySelector<HTMLElement>('.ai-history-controls');
-    if (controls) delete controls.dataset.navcatHistorySignature;
-    window.setTimeout(applyHistoryUi, 0);
+    refreshHistoryControls();
   }
 });
 
