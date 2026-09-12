@@ -8,6 +8,8 @@ import './features/dashboard/alerts-enhancer';
 import './features/dashboard/alerts-enhancer.css';
 import './features/dashboard/ai-assistant-enhancer';
 import './features/dashboard/ai-assistant-enhancer.css';
+import './features/dashboard/navcat-branding';
+import './features/dashboard/navcat-branding.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
