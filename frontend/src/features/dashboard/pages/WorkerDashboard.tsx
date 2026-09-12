@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { authSession } from '../../auth/auth-session';
 import { citizenSafetyApi, type EmergencyRecord, type EmergencyStatus } from '../api/citizen-safety.api';
 import './WorkerDashboard.css';
+import './WorkerMapEnhancements.css';
 
 type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'chat' | 'report' | 'settings';
 type ViewName = 'queue' | 'map';
@@ -80,7 +81,7 @@ export default function WorkerDashboard() {
     return { minLat, maxLat, minLng, maxLng };
   }, [visibleMapRecords, records]);
 
-  const operationsMapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${mapBounds.minLng}%2C${mapBounds.minLat}%2C${mapBounds.maxLng}%2C${mapBounds.maxLat}&layer=mapnik`;
+  const operationsMapUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${mapBounds.minLng},${mapBounds.minLat},${mapBounds.maxLng},${mapBounds.maxLat}&bboxSR=4326&imageSR=4326&size=1400,900&format=png32&transparent=false&f=image`;
 
   const markerPosition = (record: EmergencyRecord) => ({
     left: `${Math.max(3, Math.min(97, ((record.longitude - mapBounds.minLng) / (mapBounds.maxLng - mapBounds.minLng)) * 100))}%`,
@@ -183,7 +184,7 @@ export default function WorkerDashboard() {
         </section>
       </> : <section className="ops-map-page">
         <header className="ops-map-header">
-          <div><span className="ops-card-label">LIVE OPERATIONS MAP</span><h1>Active emergency response</h1><p>Live SOS locations come from the emergency database. DEMO incidents are clearly labeled and can be hidden.</p></div>
+          <div><span className="ops-card-label">LIVE OPERATIONS MAP</span><h1>Active emergency response</h1><p>English-first street map with live SOS positions from the emergency database. Risk areas and safe zones are prototype operational overlays.</p></div>
           <div className="ops-map-live">● LIVE · AUTO-REFRESH 5s</div>
         </header>
 
@@ -202,17 +203,18 @@ export default function WorkerDashboard() {
 
         <div className="ops-map-layout">
           <div className="ops-operations-map">
-            <iframe title="Responder operations map" src={operationsMapUrl} loading="lazy"/>
-            <div className="ops-risk-wash risk-one"/><div className="ops-risk-wash risk-two"/>
+            <img className="ops-map-basemap" src={operationsMapUrl} alt="English street map for responder operations"/>
+            <div className="ops-risk-wash risk-one"><span>CRITICAL RISK</span></div>
+            <div className="ops-risk-wash risk-two"><span>HIGH RISK</span></div>
             {visibleMapRecords.map((record) => (
               <button key={record.id} className={`ops-map-marker ${record.is_demo ? 'demo' : 'live'} ${record.status}`} style={markerPosition(record)} onClick={() => setSelectedId(record.id)} title={`${record.citizen_name} · ${statusLabel(record.status)}`}>
                 <span>{record.emergency_type === 'medical' ? '+' : record.emergency_type === 'evacuation' ? '↗' : '!'}</span>
                 {!record.is_demo && record.status !== 'resolved' && <i/>}
               </button>
             ))}
-            <div className="ops-safe-zone zone-a"><b>✓</b><span>Safe zone</span></div>
-            <div className="ops-safe-zone zone-b"><b>✓</b><span>Shelter</span></div>
-            <div className="ops-map-key"><div><i className="key-critical"/> High-risk context</div><div><i className="key-safe"/> Safe zone</div><div><i className="key-live"/> Live SOS</div></div>
+            <div className="ops-safe-zone zone-a"><b>✓</b><span>SAFE ZONE</span></div>
+            <div className="ops-safe-zone zone-b"><b>✓</b><span>SHELTER</span></div>
+            <div className="ops-map-key"><div><i className="key-critical"/> Critical / high-risk area</div><div><i className="key-safe"/> Safe zone</div><div><i className="key-live"/> Live SOS</div></div>
           </div>
 
           <aside className="ops-map-side">
