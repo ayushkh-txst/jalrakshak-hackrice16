@@ -33,6 +33,8 @@ import './features/dashboard/responder-routing-enhancer';
 import './features/dashboard/responder-live-map-enhancer';
 import './features/dashboard/incident-queue-finalizer';
 import './features/dashboard/incident-queue-finalizer.css';
+import './features/dashboard/incident-filter-controller';
+import './features/dashboard/incident-filter-controller.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
