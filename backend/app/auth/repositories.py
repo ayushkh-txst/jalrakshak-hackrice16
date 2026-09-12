@@ -1,25 +1,36 @@
+import os
+
 from app.auth.interfaces import UserRecord
 from app.auth.schemas import UserRole
-from app.core.config import settings
 from app.core.security import hash_password
+
+
+def _required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required development environment variable: {name}")
+    return value
 
 
 class InMemoryUserRepository:
     def __init__(self) -> None:
+        citizen_email = _required_env("G0NE_DEMO_CITIZEN_EMAIL").lower().strip()
+        worker_email = _required_env("G0NE_DEMO_WORKER_EMAIL").lower().strip()
+
         self._users = {
-            settings.demo_citizen_email.lower(): UserRecord(
+            citizen_email: UserRecord(
                 id="citizen-demo",
                 name="Demo Citizen",
-                email=settings.demo_citizen_email,
+                email=citizen_email,
                 role=UserRole.CITIZEN,
-                password_hash=hash_password(settings.demo_citizen_password.get_secret_value()),
+                password_hash=hash_password(_required_env("G0NE_DEMO_CITIZEN_PASS")),
             ),
-            settings.demo_worker_email.lower(): UserRecord(
+            worker_email: UserRecord(
                 id="worker-demo",
                 name="Demo E-Worker",
-                email=settings.demo_worker_email,
+                email=worker_email,
                 role=UserRole.WORKER,
-                password_hash=hash_password(settings.demo_worker_password.get_secret_value()),
+                password_hash=hash_password(_required_env("G0NE_DEMO_WORKER_PASS")),
             ),
         }
 
