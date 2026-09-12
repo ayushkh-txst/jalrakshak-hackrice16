@@ -1,0 +1,14 @@
+.ops-map-basemap{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.9) contrast(1.02) brightness(.98)}
+.ops-risk-wash{display:grid;place-items:center;opacity:.72;mix-blend-mode:normal;border-width:3px;border-style:dashed;box-shadow:0 10px 30px rgba(90,30,24,.16),inset 0 0 40px rgba(255,255,255,.08);backdrop-filter:blur(.2px)}
+.ops-risk-wash span{display:inline-flex;align-items:center;justify-content:center;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.9);box-shadow:0 3px 12px rgba(60,40,30,.14);font-size:10px;font-weight:900;letter-spacing:.08em;white-space:nowrap}
+.risk-one{background:rgba(156,27,24,.42)!important;border-color:#8f1f1d!important}.risk-one span{color:#8f1f1d}
+.risk-two{background:rgba(222,111,34,.38)!important;border-color:#c86122!important}.risk-two span{color:#b44f17}
+.ops-safe-zone{padding:7px 10px!important;border:2px solid #4a8f61!important;background:rgba(244,250,245,.98)!important;box-shadow:0 5px 16px rgba(39,100,60,.18)!important;font-size:9px!important;letter-spacing:.04em}
+.ops-safe-zone b{width:22px!important;height:22px!important;font-size:12px!important}
+.ops-map-marker{z-index:6!important;width:40px!important;height:40px!important;border-width:4px!important;box-shadow:0 7px 20px rgba(43,31,24,.34)!important;font-size:16px}
+.ops-map-marker.live{background:#c92320!important}.ops-map-marker.demo{background:#a78235!important}.ops-map-marker.assigned{background:#317451!important}.ops-map-marker.en_route{background:#1f63ad!important}
+.ops-map-key{z-index:7!important;padding:12px 14px!important;border:1px solid #d5c7b5!important;box-shadow:0 7px 24px rgba(56,42,30,.16)!important;font-size:9px!important;font-weight:700!important}
+.ops-map-key i{width:11px!important;height:11px!important}
+.key-critical{background:#9c1b18!important}.key-safe{background:#3f8c59!important}.key-live{background:#c92320!important}
+@media(max-width:860px){.ops-risk-wash{opacity:.64}.ops-risk-wash span{font-size:8px;padding:5px 7px}.ops-map-marker{width:36px!important;height:36px!important}}
+@media(max-width:560px){.ops-risk-wash{opacity:.58}.risk-one{width:165px!important;height:125px!important}.risk-two{width:145px!important;height:105px!important}.ops-safe-zone{font-size:8px!important}.ops-map-key{font-size:8px!important;padding:9px 10px!important}}
