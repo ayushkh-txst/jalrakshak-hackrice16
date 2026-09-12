@@ -79,6 +79,39 @@ try {
   assert.equal(await page.locator('.report-lower-grid tbody tr').count(), expected.locations_summary.length);
   console.log('PASS Reports reads real FastAPI aggregates and excludes seeded demo incidents');
 
+  const gps = page.getByLabel('GPS location', { exact: true });
+  assert.ok((await page.locator('#report-gps-suggestions option').evaluateAll(options => options.map(option => option.value))).includes('29.718, -95.402'));
+  await gps.fill('  +29.71799, -95.40200  ');
+  await page.locator('.report-gps-pending').waitFor();
+  assert.equal(await metrics.locator('strong').first().innerText(), '14', 'Typing does not apply an unfinished filter');
+  await gps.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '7');
+  assert.match(await page.locator('.report-gps-applied').innerText(), /29.718, -95.402/);
+  const gpsDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: '↓ Export CSV' }).click();
+  const gpsCsv = await readFile(await (await gpsDownloadPromise).path(), 'utf8');
+  assert.equal(gpsCsv.split('\n').filter(line => /^SOS-TEST/.test(line)).length, 7);
+  assert.ok(gpsCsv.includes('location=29.718, -95.402'));
+  if (process.env.TEST_GPS_SCREENSHOT_PATH) await page.screenshot({ path: process.env.TEST_GPS_SCREENSHOT_PATH, fullPage: true });
+  await gps.fill('91, -95.402');
+  await page.getByRole('button', { name: 'Apply GPS filter' }).click();
+  assert.match(await page.locator('#report-gps-error').innerText(), /Latitude must be between/);
+  assert.equal(await metrics.locator('strong').first().innerText(), '7', 'Invalid GPS preserves the applied results');
+  assert.equal(await gps.getAttribute('aria-invalid'), 'true');
+  await gps.fill('29.718,');
+  await gps.press('Enter');
+  assert.match(await page.locator('#report-gps-error').innerText(), /Enter latitude, longitude/);
+  await page.getByRole('button', { name: 'Clear GPS filter' }).click();
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '14');
+  assert.equal(await gps.inputValue(), '');
+  await gps.fill('27.7172, 85.3240');
+  await page.getByRole('button', { name: 'Apply GPS filter' }).click();
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '0');
+  await gps.fill('');
+  await gps.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '14');
+  console.log('PASS manual GPS precision, Enter/Apply, draft isolation, validation, no-match/clear states and matching real CSV');
+
   await page.getByLabel('Incident type', { exact: true }).selectOption('medical');
   await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '5');
   const downloadPromise = page.waitForEvent('download');
@@ -112,7 +145,8 @@ try {
   // Reproduce the user's real condition: one old assigned SOS with no action history.
   await page.getByLabel('Date range', { exact: true }).selectOption('90');
   await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '15');
-  await page.getByLabel('GPS location').selectOption('29.000, -95.000');
+  await page.getByLabel('GPS location').fill('29.000, -95.000');
+  await page.getByRole('button', { name: 'Apply GPS filter' }).click();
   await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '1');
   assert.deepEqual(await metrics.locator('strong').allTextContents(), ['1', '1', '1', '0', '0', '0']);
   await page.getByRole('tab', { name: 'response', exact: true }).click();
@@ -131,7 +165,7 @@ try {
   await page.getByText('No evacuation requests match this selection.', { exact: false }).waitFor();
   assert.deepEqual(await page.locator('.report-content .report-response-metrics strong').allTextContents(), ['0', '0', '0', '0']);
   assert.equal(await page.getByRole('heading', { name: 'Safe-zone occupancy' }).count(), 0);
-  await page.getByLabel('GPS location').selectOption('');
+  await page.getByRole('button', { name: 'Clear GPS filter' }).click();
   await page.getByLabel('Date range', { exact: true }).selectOption('7');
   await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '14');
   await page.getByRole('tab', { name: 'response', exact: true }).click();
@@ -139,10 +173,11 @@ try {
   assert.equal(await page.locator('.report-history-note').count(), 0);
   console.log('PASS one legacy SOS shows numeric current statuses, accurate missing-time labels, and no fabricated timing/shelter/alert data');
   await page.getByRole('tab', { name: 'overview', exact: true }).click();
-  await page.getByLabel('GPS location').selectOption(expected.locations[0]);
+  await page.getByLabel('GPS location').fill(expected.locations[0]);
+  await page.getByLabel('GPS location').press('Enter');
   const count = expected.locations_summary[0].incidents;
   await page.waitForFunction(count => document.querySelector('.report-metrics article strong')?.textContent === String(count), count);
-  await page.getByLabel('GPS location').selectOption('');
+  await page.getByRole('button', { name: 'Clear GPS filter' }).click();
   await page.waitForFunction(() => document.querySelector('.report-metrics article strong')?.textContent === '14');
 
   const created = await json('/emergencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ citizen_id: 'isolated-new', citizen_name: 'Isolated New Request', emergency_type: 'medical', latitude: 29.7, longitude: -95.4, accuracy_m: 30, people_count: 2 }) });

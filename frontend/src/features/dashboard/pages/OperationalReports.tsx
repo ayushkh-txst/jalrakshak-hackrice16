@@ -70,6 +70,8 @@ export default function OperationalReports({ onOpenIncident }: { onOpenIncident:
   const [exportError, setExportError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [locationDraft, setLocationDraft] = useState('');
+  const [locationError, setLocationError] = useState('');
   const queryKey = JSON.stringify(filters);
   useEffect(() => {
     let alive = true;
@@ -95,7 +97,21 @@ export default function OperationalReports({ onOpenIncident }: { onOpenIncident:
     return () => { alive = false; window.clearInterval(timer); };
   }, [queryKey, refresh]);
 
-  const change = (key: keyof ReportFilters, value: string) => setFilters(current => ({ ...current, [key]: value, page: 1 }));
+  const change = (key: keyof ReportFilters, value: string) => {
+    if (key === 'location') { setLocationDraft(value); setLocationError(''); }
+    setFilters(current => ({ ...current, [key]: value, page: 1 }));
+  };
+  const applyLocation = () => {
+    const value = locationDraft.trim();
+    if (value) {
+      const match = value.match(/^([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))\s*,\s*([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))$/);
+      if (!match) { setLocationError('Enter latitude, longitude, for example 29.718, -95.402.'); return; }
+      const latitude = Number(match[1]), longitude = Number(match[2]);
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) { setLocationError('Latitude must be between -90 and 90.'); return; }
+      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) { setLocationError('Longitude must be between -180 and 180.'); return; }
+    }
+    change('location', value);
+  };
   const download = async () => {
     setExporting(true); setExportError('');
     try { await reportsApi.export(filters); }
@@ -117,7 +133,13 @@ export default function OperationalReports({ onOpenIncident }: { onOpenIncident:
     <header className="report-header"><div><div className="report-title"><h1>Reports</h1><span className={`report-source ${error ? 'stale' : ''}`}>{error ? 'DATA UNAVAILABLE / STALE' : 'BACKEND RECORDS'}</span></div><p>Operational performance & incident analysis</p></div>
       <div className="report-controls">
         <label><span>Date range</span><select aria-label="Date range" value={range} onChange={event => { const value = event.target.value; setRange(value); if (value !== 'custom') setFilters(current => ({ ...current, ...dateRange(Number(value)), page: 1 })); }}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="custom">Custom dates</option></select></label>
-        <label><span>GPS location</span><select aria-label="GPS location" value={filters.location} onChange={event => change('location', event.target.value)}><option value="">All locations</option>{Array.from(new Set([...(data?.locations ?? []), ...(filters.location ? [filters.location] : [])])).map(location => <option key={location} value={location}>{location}</option>)}</select></label>
+        <form className="report-gps-filter" aria-label="Filter reports by GPS" onSubmit={event => { event.preventDefault(); applyLocation(); }}>
+          <label htmlFor="report-gps-input"><span>GPS location</span></label>
+          <div className="report-gps-entry"><input id="report-gps-input" aria-label="GPS location" type="text" list="report-gps-suggestions" placeholder="All locations · lat, longitude" value={locationDraft} maxLength={64} autoComplete="off" spellCheck={false} aria-invalid={Boolean(locationError)} aria-describedby={locationError ? 'report-gps-error' : 'report-gps-help'} onChange={event => { setLocationDraft(event.target.value); setLocationError(''); }}/><button type="submit" aria-label="Apply GPS filter">Apply</button>{(locationDraft || filters.location) && <button type="button" aria-label="Clear GPS filter" onClick={() => change('location', '')}>Clear</button>}</div>
+          <datalist id="report-gps-suggestions">{(data?.locations ?? []).map(location => <option key={location} value={location}/>)}</datalist>
+          <small id="report-gps-help">Type coordinates or choose a suggestion.</small>
+          {locationError && <p id="report-gps-error" role="alert">{locationError}</p>}
+        </form>
         <label><span>Prototype risk</span><select aria-label="Prototype risk" value={filters.severity} onChange={event => change('severity', event.target.value)}><option value="">All risk levels</option>{bands.map(band => <option key={band} value={band}>{labels[band]}</option>)}</select></label>
         <label><span>Incident type</span><select aria-label="Incident type" value={filters.incident_type} onChange={event => change('incident_type', event.target.value)}><option value="">All types</option>{['rescue', 'medical', 'evacuation'].map(type => <option key={type} value={type}>{labels[type]}</option>)}</select></label>
         <label><span>Status</span><select aria-label="Status" value={filters.status} onChange={event => change('status', event.target.value)}><option value="">All statuses</option>{['submitted', 'assigned', 'en_route', 'resolved', 'cancelled'].map(status => <option key={status} value={status}>{labels[status]}</option>)}</select></label>
@@ -125,7 +147,7 @@ export default function OperationalReports({ onOpenIncident }: { onOpenIncident:
       </div>
     </header>
     {range === 'custom' && <div className="report-custom-dates"><label>From <input aria-label="Start date" type="date" value={filters.start_date} max={localDate()} onChange={event => change('start_date', event.target.value)}/></label><label>Through <input aria-label="End date" type="date" value={filters.end_date} max={localDate()} onChange={event => change('end_date', event.target.value)}/></label><span>Up to 93 calendar days.</span></div>}
-    <div className="report-freshness"><span>Seeded demo incidents excluded · dates in {filters.timezone_name}</span><span>{data ? `Updated ${new Date(data.generated_at).toLocaleTimeString()} · refreshes every 15s` : 'Reading backend…'} <button onClick={() => setRefresh(value => value + 1)} disabled={loading}>Refresh</button></span></div>
+    <div className="report-freshness"><span>Seeded demo incidents excluded · dates in {filters.timezone_name}{data?.filters.location && <span className="report-gps-applied">GPS filter: {data.filters.location} · rounded to 3 decimals</span>}{locationDraft.trim() !== filters.location && <span className="report-gps-pending">GPS edit not applied. Reports and exports use the applied filter.</span>}</span><span>{data ? `Updated ${new Date(data.generated_at).toLocaleTimeString()} · refreshes every 15s` : 'Reading backend…'} <button onClick={() => setRefresh(value => value + 1)} disabled={loading}>Refresh</button></span></div>
     {(error || exportError) && <div className="report-error" role="alert">{error || exportError}{error && data && ' Displaying the last successful snapshot.'} <button onClick={() => error ? setRefresh(value => value + 1) : void download()}>Retry</button></div>}
     {loading && <p className="report-empty" role="status">Loading operational reports…</p>}
     {data && <>

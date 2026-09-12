@@ -80,7 +80,7 @@ def test_aggregates_filters_unknowns_and_demo_exclusion(api):
     assert data["locations_summary"][0]["safe_zone_load"] is None
     assert data["locations"] == ["29.718, -95.402"]
     for params, expected in [({"severity": "unknown"}, 1), ({"incident_type": "medical", "status": "resolved"}, 1),
-                             ({"status": "cancelled"}, 1), ({"location": "none"}, 0),
+                             ({"status": "cancelled"}, 1), ({"location": "0, 0"}, 0),
                              ({"severity": "critical", "incident_type": "medical"}, 0)]:
         filtered = client.get("/reports", params=params, headers=auth()).json()
         assert filtered["summary"]["total"] == expected
@@ -97,6 +97,32 @@ def test_roles_expiry_and_filter_validation(api):
                    {"start_date": "2020-01-01", "end_date": "2022-01-01"},
                    {"timezone_name": "invalid/zone"}, {"page": 0}, {"end_date": "2999-01-01"}):
         assert client.get("/reports", params=params, headers=auth()).status_code == 422
+
+
+def test_manual_gps_filter_validates_and_matches_export(api):
+    client, sessions = api
+    with sessions() as db:
+        db.add_all([row("matching"), row("elsewhere", latitude=29.74),
+                    row("zero", latitude=-0.00001, longitude=0.00001),
+                    row("edge", latitude=90, longitude=-180)])
+        db.commit()
+    for value in ("29.71799,-95.40200", "  +29.7180 , -95.4020  "):
+        data = client.get("/reports", params={"location": value}, headers=auth()).json()
+        assert data["filters"]["location"] == "29.718, -95.402"
+        assert data["summary"]["total"] == 1
+        assert data["rows"][0]["id"] == "matching"
+        export = client.get("/reports/export", params={"location": value}, headers=auth())
+        assert export.status_code == 200
+        table = list(csv.reader(io.StringIO(export.content.decode("utf-8-sig"))))
+        assert len(table[4:]) == 1 and table[4][0] == "matching"
+        assert "location=29.718, -95.402" in table[2]
+    for value, expected in (("0, -0", "zero"), ("90,-180", "edge")):
+        data = client.get("/reports", params={"location": value}, headers=auth()).json()
+        assert data["summary"]["total"] == 1 and data["rows"][0]["id"] == expected
+    assert client.get("/reports", params={"location": " "}, headers=auth()).json()["summary"]["total"] == 4
+    for value in ("91,0", "0,-181", "NaN,0", "Infinity,0", "1e309,0", "29.718", "29.718,", "29,0,1", "0x10,0", "Houston"):
+        for endpoint in ("/reports", "/reports/export"):
+            assert client.get(endpoint, params={"location": value}, headers=auth()).status_code == 422
 
 
 def test_empty_report_does_not_invent_metrics(api):

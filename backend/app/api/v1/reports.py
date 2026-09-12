@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
@@ -42,9 +43,28 @@ def band(row: Emergency) -> str:
     return "critical" if row.risk_score >= 80 else "high" if row.risk_score >= 60 else "moderate" if row.risk_score >= 35 else "low"
 
 
-def location_key(row: Emergency) -> str:
+def gps_group(latitude: float, longitude: float) -> str:
     # A GPS group, explicitly NOT an inferred district or county boundary.
-    return f"{row.latitude:.3f}, {row.longitude:.3f}"
+    return ", ".join(f"{value:.3f}".replace("-0.000", "0.000") for value in (latitude, longitude))
+
+
+def location_key(row: Emergency) -> str:
+    return gps_group(row.latitude, row.longitude)
+
+
+def normalize_location(value: str | None) -> str | None:
+    if not value or not value.strip():
+        return None
+    decimal = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)"
+    match = re.fullmatch(rf"\s*({decimal})\s*,\s*({decimal})\s*", value)
+    if not match:
+        raise HTTPException(422, "Enter GPS as latitude, longitude, for example 29.718, -95.402.")
+    latitude, longitude = (float(part) for part in match.groups())
+    if not -90 <= latitude <= 90:
+        raise HTTPException(422, "Latitude must be between -90 and 90.")
+    if not -180 <= longitude <= 180:
+        raise HTTPException(422, "Longitude must be between -180 and 180.")
+    return gps_group(latitude, longitude)
 
 
 def duration(row: Emergency, field: str, now: datetime) -> float | None:
@@ -77,7 +97,7 @@ def report_filters(
         raise HTTPException(422, "The report end date cannot be in the future.")
     return {"start_date": start, "end_date": end, "zone": zone, "timezone_name": timezone_name,
             "severity": severity, "incident_type": incident_type, "status": status,
-            "location": location, "page": page}
+            "location": normalize_location(location), "page": page}
 
 
 def build_report(db: Session, filters: dict, now: datetime | None = None):

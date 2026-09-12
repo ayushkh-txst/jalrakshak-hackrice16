@@ -23,6 +23,12 @@ Shared filters: `start_date`, `end_date` (inclusive local calendar dates); `time
 
 Records are selected by creation date. Future-dated records and seeded `is_demo=true` incidents are excluded. Status, GPS and risk use the latest stored row, so this is a cohort report, not a historical end-of-day reconstruction. A test SOS submitted through the ordinary live form is still a non-demo database record and is included.
 
+### Manual GPS filter
+
+Type decimal **latitude, longitude** into GPS location (for example `29.71799, -95.40200`) or choose a saved-location suggestion. Click **Apply** or press Enter. **Clear** returns to all locations; entering an empty value and applying does the same. Editing the field does not change the report until applied, and a pending-edit message makes clear which filter exports use.
+
+The report and CSV endpoints validate latitude in [-90, 90] and longitude in [-180, 180], then normalize to the same three-decimal GPS groups used for saved incidents. Extra spaces and decimal precision are accepted; malformed/out-of-range coordinates return 422. Negative zero is normalized consistently. This filters existing saved records and does not change a citizen's location or perform a radius search. A valid coordinate without matching records returns zero incidents.
+
 ## Metric definitions
 
 | Display | Calculation / limitation |
