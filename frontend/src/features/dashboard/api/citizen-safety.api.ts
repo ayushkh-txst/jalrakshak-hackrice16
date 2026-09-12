@@ -65,6 +65,10 @@ export type EvacuationRoute = {
   geometry: number[][];
   steps: EvacuationRouteStep[];
   alternatives_considered: number;
+  rejected_count?: number;
+  viable_count?: number;
+  recommended_count?: number;
+  screening_status?: 'pending' | 'complete';
   prototype_safety_score: number;
   reasons: string[];
   source: string;
