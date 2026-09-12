@@ -78,7 +78,7 @@ export const citizenSafetyApi = {
   },
   getEvacuationRoute(latitude: number, longitude: number): Promise<EvacuationRoute> {
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
-    return apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`);
+    return apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`, undefined, 5_500);
   },
   createEmergency(payload: EmergencyCreate): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>('/emergencies', { method: 'POST', body: JSON.stringify(payload) });
