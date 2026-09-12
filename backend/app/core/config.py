@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "G-0ne API"
     environment: str = "development"
     database_url: str = "postgresql+psycopg://g0ne:g0ne@localhost:5432/g0ne"
+    frontend_origin: str = "http://localhost:5173"
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
