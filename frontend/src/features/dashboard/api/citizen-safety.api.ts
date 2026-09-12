@@ -16,6 +16,7 @@ export type SafetyContext = {
 };
 
 export type EmergencyType = 'rescue' | 'medical' | 'evacuation';
+export type EmergencyStatus = 'submitted' | 'assigned' | 'en_route' | 'resolved';
 
 export type EmergencyCreate = {
   citizen_id: string;
@@ -34,23 +35,25 @@ export type EmergencyCreate = {
 
 export type EmergencyRecord = EmergencyCreate & {
   id: string;
-  status: 'submitted' | 'assigned' | 'en_route' | 'resolved';
+  status: EmergencyStatus;
   created_at: string;
+  updated_at?: string | null;
+  responder_id?: string | null;
+  responder_name?: string | null;
 };
 
 export const citizenSafetyApi = {
   getContext(latitude: number, longitude: number): Promise<SafetyContext> {
-    const params = new URLSearchParams({
-      latitude: latitude.toString(),
-      longitude: longitude.toString(),
-    });
+    const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
     return apiRequest<SafetyContext>(`/safety/context?${params.toString()}`);
   },
-
   createEmergency(payload: EmergencyCreate): Promise<EmergencyRecord> {
-    return apiRequest<EmergencyRecord>('/emergencies', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    return apiRequest<EmergencyRecord>('/emergencies', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  listEmergencies(): Promise<EmergencyRecord[]> {
+    return apiRequest<EmergencyRecord[]>('/emergencies');
+  },
+  updateEmergency(id: string, payload: { status: EmergencyStatus; responder_id?: string; responder_name?: string }): Promise<EmergencyRecord> {
+    return apiRequest<EmergencyRecord>(`/emergencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
   },
 };
