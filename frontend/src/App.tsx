@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -34,13 +34,7 @@ function AuthRedirectBridge() {
   return null;
 }
 
-function ProtectedRoute({
-  role,
-  children,
-}: {
-  role: 'citizen' | 'worker';
-  children: React.ReactNode;
-}) {
+function ProtectedRoute({ role, children }: { role: 'citizen' | 'worker'; children: ReactNode }) {
   const session = authSession.get();
 
   if (!session) return <Navigate to="/" replace />;
