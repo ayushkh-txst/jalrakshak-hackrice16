@@ -275,8 +275,6 @@ function restoreQueue(filter?: IncidentFilter) {
   shell.querySelector<HTMLElement>('.ops-queue-pane')?.style.removeProperty('display');
   shell.querySelector<HTMLElement>('.ops-detail-pane')?.style.removeProperty('display');
   if (filter) activeFilter = filter;
-  renderFilters();
-  applyQueueSortingAndFilter();
   markNavActive('Incident Queue');
 }
 
@@ -308,8 +306,6 @@ function renderSummary() {
   if (!shell) return;
   relabelWorkerShell();
   wireNavigation();
-  renderFilters();
-  applyQueueSortingAndFilter();
 
   if (currentStaticView === 'dashboard') renderAdminDashboard();
 
