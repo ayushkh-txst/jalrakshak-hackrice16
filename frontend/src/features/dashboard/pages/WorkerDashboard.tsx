@@ -48,7 +48,7 @@ export default function WorkerDashboard() {
   }, []);
 
   const selected = useMemo(() => records.find((item) => item.id === selectedId) ?? records[0] ?? null, [records, selectedId]);
-  const pendingCount = records.filter((r) => r.status === 'submitted').length;
+  const pendingCount = records.filter((r) => r.status === 'submitted' && !r.is_demo).length;
 
   const updateStatus = async (status: EmergencyStatus) => {
     if (!selected) return;
@@ -93,7 +93,7 @@ export default function WorkerDashboard() {
         <div className="ops-queue-list">
           {loading ? <div className="ops-empty">Loading emergency queue…</div> : records.length === 0 ? <div className="ops-empty">No SOS requests yet. Submit one from the Citizen dashboard and it will appear here.</div> : records.map((record) => (
             <button key={record.id} className={selected?.id === record.id ? 'active' : ''} onClick={() => { setSelectedId(record.id); setShowMap(false); }}>
-              <div className="queue-top"><span>{record.id}</span>{record.status === 'submitted' && <em>NEW</em>}<small>{timeAgo(record.created_at)}</small></div>
+              <div className="queue-top"><span>{record.id}</span>{record.is_demo ? <em className="demo-badge">DEMO</em> : record.status === 'submitted' ? <em>LIVE · NEW</em> : <em className="live-badge">LIVE</em>}<small>{timeAgo(record.created_at)}</small></div>
               <h3>{record.citizen_name}</h3>
               <div className="queue-bottom"><span className={`type ${record.emergency_type}`}>{record.emergency_type === 'rescue' ? 'Trapped Response' : record.emergency_type === 'medical' ? 'Medical Response' : 'Evacuation Response'}</span><strong>{record.people_count} {record.people_count === 1 ? 'person' : 'people'}</strong></div>
             </button>
@@ -106,7 +106,7 @@ export default function WorkerDashboard() {
         {error && <div className="ops-error">{error}</div>}
         {!selected ? <div className="ops-detail-empty">Select an emergency request to view details.</div> : <>
           <header className="ops-detail-header">
-            <div><div className="ops-id-row"><span>{selected.id}</span><em>{selected.emergency_type === 'rescue' ? 'Trapped Response' : selected.emergency_type === 'medical' ? 'Medical Response' : 'Evacuation Response'}</em></div><h1>{selected.citizen_name}</h1><p>Reported by {selected.citizen_name} · {selected.people_count} {selected.people_count === 1 ? 'person' : 'people'} · {timeAgo(selected.created_at)}</p></div>
+            <div><div className="ops-id-row"><span>{selected.id}</span>{selected.is_demo && <b className="ops-demo-label">DEMO INCIDENT</b>}<em>{selected.emergency_type === 'rescue' ? 'Trapped Response' : selected.emergency_type === 'medical' ? 'Medical Response' : 'Evacuation Response'}</em></div><h1>{selected.citizen_name}</h1><p>{selected.is_demo ? 'Seeded demonstration incident' : 'Live citizen SOS'} · {selected.people_count} {selected.people_count === 1 ? 'person' : 'people'} · {timeAgo(selected.created_at)}</p></div>
             <div className="ops-header-actions">
               <button className="primary" disabled={updating || selected.status !== 'submitted'} onClick={() => void updateStatus('assigned')}>Assign Responder</button>
               <button onClick={() => setShowMap((value) => !value)}>View on Map</button>
