@@ -30,11 +30,17 @@ _NAVIGATION_COLUMNS = {
     "route_updated_at": "TIMESTAMP",
     "navigation_status": "VARCHAR(32)",
     "reroute_reason": "TEXT",
+    "acknowledged_at": "TIMESTAMP",
+    "assigned_at": "TIMESTAMP",
+    "en_route_at": "TIMESTAMP",
+    "on_scene_at": "TIMESTAMP",
+    "resolved_at": "TIMESTAMP",
+    "location_updated_at": "TIMESTAMP",
 }
 
 
 def _ensure_emergency_navigation_columns() -> None:
-    """Add Stage 3 columns to an existing development/prototype database."""
+    """Add navigation/reporting columns without inventing historical timestamps."""
     table_names = set(inspect(engine).get_table_names())
     if "emergencies" not in table_names:
         return
@@ -44,6 +50,8 @@ def _ensure_emergency_navigation_columns() -> None:
         return
     with engine.begin() as connection:
         for name, sql_type in missing:
+            if sql_type == "TIMESTAMP" and engine.dialect.name == "postgresql":
+                sql_type = "TIMESTAMP WITH TIME ZONE"
             connection.execute(text(f"ALTER TABLE emergencies ADD COLUMN {name} {sql_type}"))
 
 

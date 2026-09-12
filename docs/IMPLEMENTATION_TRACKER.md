@@ -13,6 +13,18 @@ Branch: `feature/login-page-ui`.
 
 At the user's request, remove the admin/responder AI Assistant sidebar item and its placeholder page. Admin NavCat is removed from the remaining implementation scope. The five admin views are Dashboard, Live Map, Incident Queue, Reports and Settings. Citizen NavCat and the existing incident guidance card are retained. The browser navigation check now covers these five views.
 
+## Operational Reports (implemented after Stage 4)
+
+- Replaced the admin Reports placeholder with a responsive React page based on the supplied design. Metrics, trend, risk/type breakdowns, GPS group summaries, quality measurements, response records, and evacuation request counts read `GET /api/v1/admin/reports`.
+- Worker authentication is required. Seeded demo incidents are always excluded. Creation-date range (including local time zone/DST), risk, incident type, status, GPS group and pagination are server filters. Polling refreshes every 15 seconds while visible; failures show an explicit stale/unavailable state.
+- Added first acknowledgment, assignment, dispatch, on-scene, resolution, and latest citizen GPS receipt timestamps. Startup adds nullable columns without resetting records. Unknown history is never backfilled from `updated_at`. Repeated actions do not reset first milestones; navigation does not refresh citizen GPS freshness. SQLite API timestamps now include UTC.
+- Added a real Acknowledge action. Assignment also counts as acknowledgment. Arrival alone does not invent a dispatch time.
+- CSV export uses the same backend filters and exports all matching records, including timestamps, with spreadsheet formula escaping. No names, notes, tokens or photos are exported.
+- Data limits are explicit: prototype risk snapshots, self-reported group sizes, GPS groups instead of unrecorded districts, unavailable shelter occupancy/offline-sync/alert-delivery analytics. All five Reports tabs render relevant data or the specific missing measurement. No fake alert statistics or rescue totals.
+- Added a TypeScript project config so the existing `npm run build` works. Fixed a legacy loop's type narrowing surfaced by the full-source check.
+
+See [REPORTING.md](REPORTING.md) for metric definitions, endpoint contracts, verification, and local startup steps. Stage 5 automatic rerouting/notifications remains next.
+
 ## Stage 4 changes
 
 - New `hazard_reports` table in the existing database: GPS, accuracy, type, server timestamps, authenticated reporter/source, optional photo, active/resolved status and resolution audit fields. Existing startup creates this new table without resetting emergency records. Development SQLite persists it; configured PostgreSQL uses the same model.
@@ -74,7 +86,7 @@ npx tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --mo
 npx vite build
 ```
 
-The branch has no checked-in TypeScript project configuration; its pre-existing `npm run build` runs `tsc -b`. The explicit check above avoids claiming that missing project setup was repaired in Stage 4.
+At the original Stage 4 check the branch had no TypeScript project configuration. Operational Reports now adds `frontend/tsconfig.json`; `npm run build` performs the project type check and Vite production build.
 
 ## One local smoke check (no SOS replay)
 

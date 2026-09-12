@@ -69,13 +69,11 @@ function relabelWorkerShell() {
 
 function renderStaticView(kind: string) {
   const view = document.querySelector<HTMLElement>('[data-worker-static-view]');
-  if (!view || !['reports', 'settings'].includes(kind)) return;
+  if (!view || kind !== 'settings') return;
   const key = kind + JSON.stringify(latestRecords);
   if (view.dataset.renderKey === key) return;
   view.dataset.renderKey = key;
-  const active = activeRecords();
-  if (kind === 'reports') view.innerHTML = `<header><span>REPORTS</span><h1>Operational reporting</h1><p>Current backend snapshot.</p></header><div class="command-center-dashboard-metrics"><div><span>TOTAL</span><strong>${latestRecords.length}</strong></div><div><span>ACTIVE</span><strong>${active.length}</strong></div><div><span>RESOLVED</span><strong>${latestRecords.filter(r => r.status === 'resolved').length}</strong></div><div><span>LIVE SOURCE</span><strong>${latestRecords.filter(r => !r.is_demo).length}</strong></div></div>`;
-  else view.innerHTML = `<header><span>SETTINGS</span><h1>Admin settings</h1><p>Role permissions, alert thresholds, integrations, and audit controls will be finalized during the security pass.</p></header>`;
+  view.innerHTML = `<header><span>SETTINGS</span><h1>Admin settings</h1><p>Role permissions, alert thresholds, integrations, and audit controls will be finalized during the security pass.</p></header>`;
 }
 
 function renderSummary() {

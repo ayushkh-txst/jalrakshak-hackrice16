@@ -1,5 +1,6 @@
 import { apiRequest } from '../../../lib/api-client';
 import { screenEvacuationRoute } from './route-screening';
+import { authSession } from '../../auth/auth-session';
 
 export type SafetyContext = {
   latitude: number;
@@ -51,6 +52,12 @@ export type EmergencyRecord = EmergencyCreate & {
   eta_updated_at?: string | null;
   route_updated_at?: string | null;
   reroute_reason?: string | null;
+  acknowledged_at?: string | null;
+  assigned_at?: string | null;
+  en_route_at?: string | null;
+  on_scene_at?: string | null;
+  resolved_at?: string | null;
+  location_updated_at?: string | null;
 };
 
 export type EmergencyNavigationUpdate = {
@@ -155,6 +162,10 @@ export const citizenSafetyApi = {
   },
   getEmergency(id: string): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}`);
+  },
+  acknowledgeEmergency(id: string): Promise<EmergencyRecord> {
+    const token = authSession.get()?.access_token;
+    return apiRequest<EmergencyRecord>(`/emergencies/${id}/acknowledge`, { method: 'POST', headers: { Authorization: `Bearer ${token ?? ''}` } });
   },
   listEmergencies(filters?: EmergencyListFilters): Promise<EmergencyRecord[]> {
     return apiRequest<EmergencyRecord[]>(emergencyListPath(filters));

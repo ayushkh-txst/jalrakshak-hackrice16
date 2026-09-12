@@ -67,7 +67,7 @@ function applyRecords(records: EmergencyRecord[]) {
     const cards = Array.from(document.querySelectorAll<HTMLButtonElement>(CARD_SELECTOR));
     let firstVisible: HTMLButtonElement | null = null;
     let visible = 0;
-    cards.forEach((card) => {
+    for (const card of cards) {
       const show = allowed.has(cardId(card));
       if (show) {
         card.style.removeProperty('display');
@@ -78,7 +78,7 @@ function applyRecords(records: EmergencyRecord[]) {
         card.style.setProperty('display', 'none', 'important');
         card.style.pointerEvents = 'none';
       }
-    });
+    }
     if (!visible) renderEmpty(list, `No ${activeFilter === 'all' ? '' : activeFilter.replace('_',' ') + ' '}incidents right now.`);
     else clearEmpty(list);
     const selected = cards.find((card) => card.classList.contains('active'));

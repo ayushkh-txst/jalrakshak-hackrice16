@@ -5,11 +5,12 @@ from enum import Enum
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.core.database import Base, get_db
+from app.api.v1.hazards import signed_reporter
 
 router = APIRouter()
 
@@ -67,6 +68,12 @@ class Emergency(Base):
     navigation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reroute_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    en_route_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    on_scene_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    location_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EmergencyCreate(BaseModel):
@@ -123,6 +130,20 @@ class EmergencyRecord(EmergencyCreate):
     navigation_status: NavigationStatus | None = None
     reroute_reason: str | None = None
     is_demo: bool = False
+    acknowledged_at: datetime | None = None
+    assigned_at: datetime | None = None
+    en_route_at: datetime | None = None
+    on_scene_at: datetime | None = None
+    resolved_at: datetime | None = None
+    location_updated_at: datetime | None = None
+
+    @field_validator("created_at", "updated_at", "eta_updated_at", "route_updated_at",
+                     "acknowledged_at", "assigned_at", "en_route_at", "on_scene_at",
+                     "resolved_at", "location_updated_at", mode="after")
+    @classmethod
+    def timestamps_are_utc(cls, value):
+        # SQLite drops timezone information. Never send these as browser-local time.
+        return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -153,7 +174,8 @@ def seed_demo_emergencies(db: Session) -> None:
 
 @router.post("", response_model=EmergencyRecord, status_code=201)
 def create_emergency(payload: EmergencyCreate, db: Session = Depends(get_db)) -> EmergencyRecord:
-    record = Emergency(**payload.model_dump(mode="json"), id=f"SOS-{uuid4().hex[:8].upper()}", status=EmergencyStatus.submitted.value, created_at=datetime.now(timezone.utc), is_demo=False)
+    now = datetime.now(timezone.utc)
+    record = Emergency(**payload.model_dump(mode="json"), id=f"SOS-{uuid4().hex[:8].upper()}", status=EmergencyStatus.submitted.value, created_at=now, location_updated_at=now, is_demo=False)
     db.add(record)
     db.commit()
     db.refresh(record)
@@ -201,6 +223,7 @@ def update_emergency_location(
     record.longitude = payload.longitude
     record.accuracy_m = payload.accuracy_m
     record.updated_at = datetime.now(timezone.utc)
+    record.location_updated_at = record.updated_at
     db.commit()
     db.refresh(record)
     return EmergencyRecord.model_validate(record)
@@ -221,6 +244,8 @@ def update_emergency_navigation(
         raise HTTPException(status_code=409, detail="Assign a responder before saving navigation")
 
     now = datetime.now(timezone.utc)
+    previous_status = record.status
+    previous_navigation = record.navigation_status
     record.responder_latitude = payload.responder_latitude
     record.responder_longitude = payload.responder_longitude
     record.recommended_route = payload.recommended_route
@@ -234,6 +259,10 @@ def update_emergency_navigation(
         record.status = EmergencyStatus.en_route.value
     elif payload.navigation_status == NavigationStatus.resolved:
         record.status = EmergencyStatus.resolved.value
+    if payload.navigation_status in {NavigationStatus.en_route, NavigationStatus.resolved}:
+        record_milestones(record, previous_status, now)
+    if payload.navigation_status == NavigationStatus.on_scene and previous_navigation != "on_scene" and record.on_scene_at is None:
+        record.on_scene_at = now
     record.updated_at = now
     db.commit()
     db.refresh(record)
@@ -247,14 +276,44 @@ def update_emergency(emergency_id: str, payload: EmergencyUpdate, db: Session = 
         raise HTTPException(status_code=404, detail="Emergency request not found")
     if record.status in {EmergencyStatus.resolved.value, EmergencyStatus.cancelled.value} and payload.status != EmergencyStatus.resolved:
         raise HTTPException(status_code=409, detail="Closed emergency requests cannot be changed")
+    previous_status = record.status
     record.status = payload.status.value
     if payload.responder_id is not None:
         record.responder_id = payload.responder_id
     if payload.responder_name is not None:
         record.responder_name = payload.responder_name
     record.updated_at = datetime.now(timezone.utc)
+    record_milestones(record, previous_status, record.updated_at)
     db.commit()
     db.refresh(record)
+    return EmergencyRecord.model_validate(record)
+
+
+def record_milestones(record: Emergency, previous_status: str, now: datetime) -> None:
+    if previous_status == record.status:
+        return
+    column = {"assigned": "assigned_at", "en_route": "en_route_at", "resolved": "resolved_at"}.get(record.status)
+    if column and getattr(record, column) is None:
+        setattr(record, column, now)
+    # Assignment is also an explicit acknowledgment; do not infer one from a GPS update.
+    if record.status == "assigned" and record.acknowledged_at is None:
+        record.acknowledged_at = now
+
+
+@router.post("/{emergency_id}/acknowledge", response_model=EmergencyRecord)
+def acknowledge_emergency(emergency_id: str, reporter: dict = Depends(signed_reporter), db: Session = Depends(get_db)):
+    if reporter["role"] != "worker":
+        raise HTTPException(403, "Only responders can acknowledge incidents.")
+    record = db.get(Emergency, emergency_id)
+    if record is None:
+        raise HTTPException(404, "Emergency request not found")
+    if record.status in {"resolved", "cancelled"}:
+        raise HTTPException(409, "This incident is closed.")
+    if record.acknowledged_at is None:
+        record.acknowledged_at = datetime.now(timezone.utc)
+        record.updated_at = record.acknowledged_at
+        db.commit()
+        db.refresh(record)
     return EmergencyRecord.model_validate(record)
 
 

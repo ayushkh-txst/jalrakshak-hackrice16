@@ -121,7 +121,8 @@ try {
   for (const view of ['dashboard', 'map', 'queue', 'dashboard', 'reports', 'settings', 'dashboard', 'map']) {
     await nav(view).click(); await assertView(view);
     if (view === 'dashboard') await page.waitForSelector('[data-admin-dashboard]');
-    else if (['reports', 'settings'].includes(view)) await page.waitForSelector(`[data-worker-static-view="${view}"] h1`);
+    else if (view === 'reports') await page.waitForSelector('[data-operational-reports] h1');
+    else if (view === 'settings') await page.waitForSelector(`[data-worker-static-view="${view}"] h1`);
     else if (view === 'map') await page.waitForFunction(() => Boolean(document.querySelector('[data-responder-map]')?.responderMap));
     else await page.waitForSelector('.ops-queue-pane');
   }

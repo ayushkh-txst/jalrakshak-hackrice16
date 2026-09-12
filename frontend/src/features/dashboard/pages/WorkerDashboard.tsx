@@ -4,6 +4,7 @@ import { citizenSafetyApi, type EmergencyListFilters, type EmergencyRecord, type
 import './WorkerDashboard.css';
 import './WorkerMapEnhancements.css';
 import ResponderOperationsMap from './ResponderOperationsMap';
+import OperationalReports from './OperationalReports';
 
 type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'report' | 'settings';
 type ViewName = 'queue' | 'map' | 'dashboard' | 'reports' | 'settings';
@@ -150,6 +151,16 @@ export default function WorkerDashboard() {
     setActiveView('queue');
   };
 
+  const acknowledge = async () => {
+    if (!selected) return;
+    setUpdating(true);
+    try {
+      await citizenSafetyApi.acknowledgeEmergency(selected.id);
+      await loadQueue(activeFilter);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to acknowledge incident'); }
+    finally { setUpdating(false); }
+  };
+
   return (
     <main data-worker-view={activeView} className={`ops-shell ${activeView !== 'queue' ? 'map-mode' : ''}`}>
       <aside className="ops-sidebar">
@@ -208,6 +219,7 @@ export default function WorkerDashboard() {
             <header className="ops-detail-header">
               <div><div className="ops-id-row"><span>{selected.id}</span>{selected.is_demo && <b className="ops-demo-label">DEMO INCIDENT</b>}<em>{selected.emergency_type === 'rescue' ? 'Trapped Response' : selected.emergency_type === 'medical' ? 'Medical Response' : 'Evacuation Response'}</em></div><h1>{selected.citizen_name}</h1><p>{selected.is_demo ? 'Seeded demonstration incident' : 'Live citizen SOS'} · {selected.people_count} {selected.people_count === 1 ? 'person' : 'people'} · {timeAgo(selected.created_at)}</p></div>
               <div className="ops-header-actions">
+                {!selected.acknowledged_at && !['resolved', 'cancelled'].includes(selected.status) && <button disabled={updating} onClick={() => void acknowledge()}>Acknowledge</button>}
                 <button className="primary" disabled={updating || selected.status !== 'submitted'} onClick={() => void updateStatus('assigned')}>Assign Responder</button>
                 <button onClick={() => setShowMap((value) => !value)}>View on Map</button>
               </div>
@@ -222,7 +234,7 @@ export default function WorkerDashboard() {
                   ['Received','Request entered queue'],['Acknowledged','Responder review'],['Assigned', selected.responder_name || 'Awaiting responder'],['En Route','Responder traveling'],['On Scene','Field response'],['Resolved','Incident closed'],
                 ].map(([label, sub], index) => {
                   const stageMap = [0,0,1,2,3,3];
-                  const done = currentStatusIndex >= stageMap[index];
+                  const done = index === 1 ? Boolean(selected.acknowledged_at) : index === 4 ? Boolean(selected.on_scene_at) : currentStatusIndex >= stageMap[index];
                   const current = (selected.status === 'submitted' && index === 0) || (selected.status === 'assigned' && index === 2) || (selected.status === 'en_route' && index === 3) || (selected.status === 'resolved' && index === 5);
                   return <div className={`timeline-row ${done ? 'done' : ''} ${current ? 'current' : ''}`} key={label}><i>{done ? '✓' : ''}</i><div><strong>{label}{current && <em>CURRENT</em>}</strong><span>{sub}</span></div></div>;
                 })}
@@ -270,7 +282,8 @@ export default function WorkerDashboard() {
             </> : <div className="ops-map-empty">Select an SOS marker to inspect the incident.</div>}
           </aside>
         </div>
-      </section> : <section key={activeView} className="command-center-static-view admin-dashboard-stable-host" data-worker-static-view={activeView}/>}
+      </section> : activeView === 'reports' ? <OperationalReports onOpenIncident={id => { setActiveFilter('all'); setSelectedId(id); setShowMap(false); setActiveView('queue'); }}/>
+        : <section key={activeView} className="command-center-static-view admin-dashboard-stable-host" data-worker-static-view={activeView}/>}
     </main>
   );
 }
