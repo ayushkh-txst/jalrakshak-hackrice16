@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authSession } from '../../auth/auth-session';
+import CitizenEmergencyHelp from './CitizenEmergencyHelp';
 import './CitizenDashboard.css';
 import './CitizenLiveMap.css';
 
@@ -82,13 +83,7 @@ const loadLeaflet = () =>
     document.body.appendChild(script);
   });
 
-function InteractiveSafetyMap({
-  center,
-  guidanceActive,
-}: {
-  center: MapCenter;
-  guidanceActive: boolean;
-}) {
+function InteractiveSafetyMap({ center, guidanceActive }: { center: MapCenter; guidanceActive: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [showRiskAreas, setShowRiskAreas] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(true);
@@ -219,9 +214,7 @@ function InteractiveSafetyMap({
   return (
     <>
       <div ref={containerRef} className="interactive-safety-map" aria-label="Interactive JalRakshak safety map" />
-      {mapError && (
-        <div className="map-load-error">The interactive map could not load. Check your internet connection and refresh.</div>
-      )}
+      {mapError && <div className="map-load-error">The interactive map could not load. Check your internet connection and refresh.</div>}
       <div className="map-layer-controls" aria-label="Map layer controls">
         <button type="button" className={showRiskAreas ? 'active' : ''} onClick={() => setShowRiskAreas((value) => !value)}>Risk areas</button>
         <button type="button" className={showSafeZones ? 'active' : ''} onClick={() => setShowSafeZones((value) => !value)}>Safe zones</button>
@@ -235,7 +228,6 @@ export default function CitizenDashboard() {
   const session = authSession.get();
   const [activeNav, setActiveNav] = useState<NavItem>('Overview');
   const [showCriticalAlert, setShowCriticalAlert] = useState(true);
-  const [helpRequested, setHelpRequested] = useState(false);
   const [browserLocation, setBrowserLocation] = useState<BrowserLocation>(null);
   const [locationStatus, setLocationStatus] = useState('Demo location');
   const [guidanceActive, setGuidanceActive] = useState(false);
@@ -265,7 +257,6 @@ export default function CitizenDashboard() {
   };
 
   const requestHelp = () => {
-    setHelpRequested(true);
     setGuidanceActive(false);
     setShowCriticalAlert(false);
     setActiveNav('Emergency Help');
@@ -464,23 +455,28 @@ export default function CitizenDashboard() {
     </section>
   );
 
-  const renderSecondaryPanel = () => (
-    <section className="figma-placeholder-panel">
-      <span className="safe-eyebrow">{activeNav.toUpperCase()}</span>
-      <h2>{activeNav}</h2>
-      <p>
-        {activeNav === 'Emergency Help'
-          ? helpRequested
-            ? 'Your demo help request has been recorded. A responder workflow will be connected next.'
-            : 'Use this screen to request rescue, medical assistance, or evacuation support.'
-          : `${activeNav} is the next Citizen module to connect. The application shell and navigation are now in place.`}
-      </p>
-      {activeNav === 'Emergency Help' && !helpRequested && (
-        <button type="button" className="figma-danger-button" onClick={requestHelp}>REQUEST EMERGENCY HELP</button>
-      )}
-      <button type="button" className="figma-secondary back-overview" onClick={() => setActiveNav('Overview')}>Back to overview</button>
-    </section>
-  );
+  const renderSecondaryPanel = () => {
+    if (activeNav === 'Emergency Help') {
+      return (
+        <CitizenEmergencyHelp
+          citizenId={session?.user.id ?? 'citizen-demo'}
+          citizenName={displayName}
+          fallbackLatitude={mapCenter.latitude}
+          fallbackLongitude={mapCenter.longitude}
+          onBack={() => setActiveNav('Overview')}
+        />
+      );
+    }
+
+    return (
+      <section className="figma-placeholder-panel">
+        <span className="safe-eyebrow">{activeNav.toUpperCase()}</span>
+        <h2>{activeNav}</h2>
+        <p>{`${activeNav} is the next Citizen module to connect. The application shell and navigation are now in place.`}</p>
+        <button type="button" className="figma-secondary back-overview" onClick={() => setActiveNav('Overview')}>Back to overview</button>
+      </section>
+    );
+  };
 
   const renderActiveScreen = () => {
     if (activeNav === 'Overview') return renderOverview();
@@ -538,9 +534,7 @@ export default function CitizenDashboard() {
           </div>
         </header>
 
-        <div className="figma-page-content">
-          {renderActiveScreen()}
-        </div>
+        <div className="figma-page-content">{renderActiveScreen()}</div>
       </section>
 
       {showCriticalAlert && activeNav === 'Overview' && (
