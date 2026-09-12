@@ -80,11 +80,15 @@ function InteractiveSafetyMap({ center }: { center: MapCenter }) {
           scrollWheelZoom: true,
         }).setView([center.latitude, center.longitude], 13);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-          maxZoom: 19,
-          subdomains: 'abcd',
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-        }).addTo(map);
+        // Esri's World Street Map works without a client API key and uses
+        // English-forward labels in most locations, which is clearer for the demo.
+        L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+          {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri and contributors',
+          },
+        ).addTo(map);
 
         const userMarker = L.circleMarker([center.latitude, center.longitude], {
           radius: 9,
@@ -328,7 +332,7 @@ export default function CitizenDashboard() {
         <div>
           <span className="safe-eyebrow">LIVE SAFETY MAP</span>
           <h1>Safest route around you</h1>
-          <p>English-friendly live map tiles are provided by CARTO using OpenStreetMap data. Risk areas, closures, and the evacuation route are interactive demo overlays until the live flood feeds are connected.</p>
+          <p>English-friendly live map tiles are provided by Esri. Risk areas, closures, and the evacuation route are interactive demo overlays until the live flood feeds are connected.</p>
         </div>
         <button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button>
       </div>
@@ -348,7 +352,7 @@ export default function CitizenDashboard() {
           </div>
           <div className="map-overlay-card map-risk-legend">
             <span><i className="legend-swatch critical" /> Critical risk</span>
-            <span><i className="legend-swatch high-risk" /> High risk</span>
+            <span><i className="legend-swatch high" /> High risk</span>
             <span><i className="legend-swatch route" /> Recommended route</span>
             <span><i className="legend-swatch safe" /> Safe destination</span>
           </div>
@@ -379,7 +383,7 @@ export default function CitizenDashboard() {
       <div className="map-bottom-cards">
         <article><span>🚧</span><div><strong>2 closures ahead</strong><small>Both excluded from recommended route</small></div></article>
         <article><span>🏫</span><div><strong>Safe zone accepting arrivals</strong><small>Demo capacity: 61%</small></div></article>
-        <article><span>📡</span><div><strong>Interactive map connected</strong><small>CARTO + OpenStreetMap base layer</small></div></article>
+        <article><span>📡</span><div><strong>Live map connected</strong><small>Esri World Street Map base layer</small></div></article>
       </div>
     </section>
   );
