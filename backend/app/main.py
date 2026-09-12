@@ -5,14 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.api.v1.emergencies import seed_demo_emergencies
+from app.core import database
 from app.core.config import settings
-from app.core.database import Base, SessionLocal, engine
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    with SessionLocal() as db:
+    database.initialize_database()
+    with database.SessionLocal() as db:
         seed_demo_emergencies(db)
     yield
 
