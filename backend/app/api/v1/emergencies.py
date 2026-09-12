@@ -25,6 +25,7 @@ class EmergencyStatus(str, Enum):
     assigned = "assigned"
     en_route = "en_route"
     resolved = "resolved"
+    cancelled = "cancelled"
 
 
 class Emergency(Base):
@@ -85,80 +86,10 @@ class EmergencyRecord(EmergencyCreate):
 
 
 DEMO_INCIDENTS = [
-    {
-        "id": "DEMO-1042",
-        "citizen_id": "demo-meena",
-        "citizen_name": "Meena Devi",
-        "emergency_type": "rescue",
-        "latitude": 27.7172,
-        "longitude": 85.3240,
-        "accuracy_m": 9.0,
-        "people_count": 4,
-        "notes": "Family trapped near the ground floor. Water rising around the access road.",
-        "risk_score": 87,
-        "risk_level": "critical",
-        "precipitation_next_6h_mm": 42.8,
-        "river_discharge_m3s": 183.4,
-        "status": "en_route",
-        "responder_id": "demo-amit",
-        "responder_name": "Amit Kumar",
-        "minutes_ago": 21,
-    },
-    {
-        "id": "DEMO-1039",
-        "citizen_id": "demo-bikash",
-        "citizen_name": "Bikash Rai",
-        "emergency_type": "medical",
-        "latitude": 27.7098,
-        "longitude": 85.3314,
-        "accuracy_m": 14.0,
-        "people_count": 1,
-        "notes": "Medical assistance requested for an elderly resident unable to evacuate independently.",
-        "risk_score": 71,
-        "risk_level": "high",
-        "precipitation_next_6h_mm": 31.2,
-        "river_discharge_m3s": 158.1,
-        "status": "submitted",
-        "minutes_ago": 12,
-    },
-    {
-        "id": "DEMO-1036",
-        "citizen_id": "demo-community",
-        "citizen_name": "Kankarbhaag Colony",
-        "emergency_type": "evacuation",
-        "latitude": 27.7027,
-        "longitude": 85.3188,
-        "accuracy_m": 22.0,
-        "people_count": 12,
-        "notes": "Community group needs transport to a safe zone before the lower road becomes impassable.",
-        "risk_score": 64,
-        "risk_level": "high",
-        "precipitation_next_6h_mm": 28.7,
-        "river_discharge_m3s": 145.3,
-        "status": "assigned",
-        "responder_id": "demo-sita",
-        "responder_name": "Sita Thapa",
-        "minutes_ago": 34,
-    },
-    {
-        "id": "DEMO-1033",
-        "citizen_id": "demo-gandhi",
-        "citizen_name": "Gandhi Maidan Area",
-        "emergency_type": "medical",
-        "latitude": 27.7241,
-        "longitude": 85.3126,
-        "accuracy_m": 18.0,
-        "people_count": 3,
-        "notes": "Three residents need assisted transport; one has limited mobility.",
-        "risk_score": 52,
-        "risk_level": "moderate",
-        "precipitation_next_6h_mm": 19.4,
-        "river_discharge_m3s": 119.7,
-        "status": "resolved",
-        "responder_id": "demo-ramesh",
-        "responder_name": "Ramesh K.",
-        "minutes_ago": 68,
-    },
+    {"id":"DEMO-1042","citizen_id":"demo-meena","citizen_name":"Meena Devi","emergency_type":"rescue","latitude":27.7172,"longitude":85.3240,"accuracy_m":9.0,"people_count":4,"notes":"Family trapped near the ground floor. Water rising around the access road.","risk_score":87,"risk_level":"critical","precipitation_next_6h_mm":42.8,"river_discharge_m3s":183.4,"status":"en_route","responder_id":"demo-amit","responder_name":"Amit Kumar","minutes_ago":21},
+    {"id":"DEMO-1039","citizen_id":"demo-bikash","citizen_name":"Bikash Rai","emergency_type":"medical","latitude":27.7098,"longitude":85.3314,"accuracy_m":14.0,"people_count":1,"notes":"Medical assistance requested for an elderly resident unable to evacuate independently.","risk_score":71,"risk_level":"high","precipitation_next_6h_mm":31.2,"river_discharge_m3s":158.1,"status":"submitted","minutes_ago":12},
+    {"id":"DEMO-1036","citizen_id":"demo-community","citizen_name":"Kankarbhaag Colony","emergency_type":"evacuation","latitude":27.7027,"longitude":85.3188,"accuracy_m":22.0,"people_count":12,"notes":"Community group needs transport to a safe zone before the lower road becomes impassable.","risk_score":64,"risk_level":"high","precipitation_next_6h_mm":28.7,"river_discharge_m3s":145.3,"status":"assigned","responder_id":"demo-sita","responder_name":"Sita Thapa","minutes_ago":34},
+    {"id":"DEMO-1033","citizen_id":"demo-gandhi","citizen_name":"Gandhi Maidan Area","emergency_type":"medical","latitude":27.7241,"longitude":85.3126,"accuracy_m":18.0,"people_count":3,"notes":"Three residents need assisted transport; one has limited mobility.","risk_score":52,"risk_level":"moderate","precipitation_next_6h_mm":19.4,"river_discharge_m3s":119.7,"status":"resolved","responder_id":"demo-ramesh","responder_name":"Ramesh K.","minutes_ago":68},
 ]
 
 
@@ -180,13 +111,7 @@ def seed_demo_emergencies(db: Session) -> None:
 
 @router.post("", response_model=EmergencyRecord, status_code=201)
 def create_emergency(payload: EmergencyCreate, db: Session = Depends(get_db)) -> EmergencyRecord:
-    record = Emergency(
-        **payload.model_dump(mode="json"),
-        id=f"SOS-{uuid4().hex[:8].upper()}",
-        status=EmergencyStatus.submitted.value,
-        created_at=datetime.now(timezone.utc),
-        is_demo=False,
-    )
+    record = Emergency(**payload.model_dump(mode="json"), id=f"SOS-{uuid4().hex[:8].upper()}", status=EmergencyStatus.submitted.value, created_at=datetime.now(timezone.utc), is_demo=False)
     db.add(record)
     db.commit()
     db.refresh(record)
@@ -199,17 +124,40 @@ def list_emergencies(db: Session = Depends(get_db)) -> list[EmergencyRecord]:
     return [EmergencyRecord.model_validate(record) for record in records]
 
 
+@router.get("/{emergency_id}", response_model=EmergencyRecord)
+def get_emergency(emergency_id: str, db: Session = Depends(get_db)) -> EmergencyRecord:
+    record = db.get(Emergency, emergency_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Emergency request not found")
+    return EmergencyRecord.model_validate(record)
+
+
 @router.patch("/{emergency_id}", response_model=EmergencyRecord)
 def update_emergency(emergency_id: str, payload: EmergencyUpdate, db: Session = Depends(get_db)) -> EmergencyRecord:
     record = db.get(Emergency, emergency_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Emergency request not found")
-
+    if record.status in {EmergencyStatus.resolved.value, EmergencyStatus.cancelled.value} and payload.status != EmergencyStatus.resolved:
+        raise HTTPException(status_code=409, detail="Closed emergency requests cannot be changed")
     record.status = payload.status.value
     if payload.responder_id is not None:
         record.responder_id = payload.responder_id
     if payload.responder_name is not None:
         record.responder_name = payload.responder_name
+    record.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(record)
+    return EmergencyRecord.model_validate(record)
+
+
+@router.post("/{emergency_id}/cancel", response_model=EmergencyRecord)
+def cancel_emergency(emergency_id: str, db: Session = Depends(get_db)) -> EmergencyRecord:
+    record = db.get(Emergency, emergency_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Emergency request not found")
+    if record.status != EmergencyStatus.submitted.value:
+        raise HTTPException(status_code=409, detail="This request can only be cancelled before a responder is assigned")
+    record.status = EmergencyStatus.cancelled.value
     record.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(record)
