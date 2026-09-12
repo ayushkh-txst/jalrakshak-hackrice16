@@ -26,6 +26,8 @@ import './features/dashboard/admin-dashboard-figma-fixes.css';
 import './features/dashboard/dashboard-stability-texas';
 import './features/dashboard/admin-county-map-enhancer';
 import './features/dashboard/admin-county-map-enhancer.css';
+import './features/dashboard/responder-lifecycle-enhancer';
+import './features/dashboard/responder-lifecycle-enhancer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
