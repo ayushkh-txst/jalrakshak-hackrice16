@@ -9,6 +9,7 @@ type NavItem = 'Overview' | 'Live Map' | 'Alerts' | 'AI Assistant' | 'Emergency 
 type BrowserLocation = { latitude: number; longitude: number } | null;
 type MapCenter = { latitude: number; longitude: number };
 type GuidanceStep = { title: string; detail: string; distance: string; eta: string };
+type RouteFreshness = 'live' | 'cached' | 'unavailable';
 
 const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: boolean }> = [
   { label: 'Overview', icon: '▦' },
@@ -21,6 +22,9 @@ const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: bo
 
 const DEMO_CENTER = { latitude: 27.9516, longitude: 85.6846 };
 const FALLBACK_SAFE_ZONE = { latitude: 27.9635, longitude: 85.7085 };
+const ROUTE_CACHE_TTL_MS = 2 * 60 * 1000;
+const routeCache = new Map<string, { route: EvacuationRoute; savedAt: number }>();
+
 const fallbackGuidanceSteps: GuidanceStep[] = [
   { title: 'Head southeast to the upper road', detail: 'Stay away from the riverside lane.', distance: '920 m', eta: '13 min' },
   { title: 'Continue past the market junction', detail: 'The recommended path bypasses both closures.', distance: '610 m', eta: '9 min' },
@@ -30,6 +34,7 @@ const fallbackGuidanceSteps: GuidanceStep[] = [
 
 const formatDistance = (meters: number) => meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.max(1, Math.round(meters))} m`;
 const formatDuration = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min`;
+const routeCacheKey = (latitude: number, longitude: number) => `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
 
 const loadLeaflet = () => new Promise<any>((resolve, reject) => {
   const existing = (window as Window & { L?: any }).L;
@@ -76,7 +81,11 @@ function InteractiveSafetyMap({ center, guidanceActive, route }: { center: MapCe
       }).addTo(map);
 
       L.circleMarker([center.latitude, center.longitude], {
-        radius: guidanceActive ? 10 : 9, color: '#ffffff', weight: 4, fillColor: '#3d7fe8', fillOpacity: 1,
+        radius: guidanceActive ? 10 : 9,
+        color: '#ffffff',
+        weight: 4,
+        fillColor: '#3d7fe8',
+        fillOpacity: 1,
       }).addTo(map).bindPopup('<strong>You are here</strong><br/>Current citizen GPS location');
 
       const nearNepalDemo = Math.abs(center.latitude - DEMO_CENTER.latitude) < 0.5 && Math.abs(center.longitude - DEMO_CENTER.longitude) < 0.5;
@@ -91,19 +100,21 @@ function InteractiveSafetyMap({ center, guidanceActive, route }: { center: MapCe
 
       const safeLat = route?.destination_latitude ?? FALLBACK_SAFE_ZONE.latitude;
       const safeLon = route?.destination_longitude ?? FALLBACK_SAFE_ZONE.longitude;
-      if (showSafeZones) {
+      if (showSafeZones && route) {
         const safeIcon = L.divIcon({ className:'jalrakshak-safe-marker', html:'<span>✓</span>', iconSize:[34,34], iconAnchor:[17,17] });
         L.marker([safeLat, safeLon], { icon:safeIcon }).addTo(map)
-          .bindPopup(`<strong>${route?.destination_name ?? 'Shree Secondary School'}</strong><br/>Recommended evacuation destination`);
+          .bindPopup(`<strong>${route.destination_name}</strong><br/>Recommended evacuation destination`);
       }
 
-      if (showRoute) {
-        const points = route?.geometry?.length ? route.geometry : [[center.latitude, center.longitude],[safeLat,safeLon]];
-        const polyline = L.polyline(points, {
-          color: guidanceActive ? '#4f6f3d' : '#76623a', weight: guidanceActive ? 8 : 6, opacity:.95, lineJoin:'round',
+      if (showRoute && route?.geometry?.length) {
+        const polyline = L.polyline(route.geometry, {
+          color: guidanceActive ? '#4f6f3d' : '#76623a',
+          weight: guidanceActive ? 8 : 6,
+          opacity:.95,
+          lineJoin:'round',
         }).addTo(map);
-        polyline.bindPopup(route ? '<strong>Recommended evacuation route</strong><br/>Real road geometry from OSRM.' : '<strong>Fallback route</strong>');
-        if (route || guidanceActive) map.fitBounds(polyline.getBounds(), { padding:[45,45] });
+        polyline.bindPopup('<strong>Recommended evacuation route</strong><br/>Real road geometry from OSRM.');
+        map.fitBounds(polyline.getBounds(), { padding:[45,45] });
       }
       window.setTimeout(() => map?.invalidateSize(), 80);
     }).catch(() => setMapError(true));
@@ -132,6 +143,7 @@ export default function CitizenDashboard() {
   const [routeData, setRouteData] = useState<EvacuationRoute | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState('');
+  const [routeFreshness, setRouteFreshness] = useState<RouteFreshness>('unavailable');
   const [showRouteReasons, setShowRouteReasons] = useState(false);
 
   const displayName = useMemo(() => {
@@ -154,10 +166,40 @@ export default function CitizenDashboard() {
   const guidanceProgress = guidanceActive ? ((guidanceStep + 1) / dynamicSteps.length) * 100 : 0;
 
   const loadRoute = async (latitude: number, longitude: number) => {
-    setRouteLoading(true); setRouteError('');
-    try { setRouteData(await citizenSafetyApi.getEvacuationRoute(latitude, longitude)); }
-    catch (error) { setRouteData(null); setRouteError(error instanceof Error ? error.message : 'Unable to calculate evacuation route'); }
-    finally { setRouteLoading(false); }
+    const key = routeCacheKey(latitude, longitude);
+    const cached = routeCache.get(key);
+    const cacheIsFresh = cached && Date.now() - cached.savedAt < ROUTE_CACHE_TTL_MS;
+
+    if (cacheIsFresh && cached) {
+      setRouteData(cached.route);
+      setRouteFreshness('cached');
+      setRouteError('');
+    }
+
+    setRouteLoading(true);
+    if (!cacheIsFresh) setRouteError('');
+
+    try {
+      const route = await citizenSafetyApi.getEvacuationRoute(latitude, longitude);
+      routeCache.set(key, { route, savedAt: Date.now() });
+      setRouteData(route);
+      setRouteFreshness('live');
+      setRouteError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to calculate evacuation route';
+      if (cacheIsFresh && cached) {
+        setRouteData(cached.route);
+        setRouteFreshness('cached');
+        setRouteError('Live refresh is slow, so JalRakshak is keeping the recent cached route visible.');
+      } else {
+        setRouteFreshness(routeData ? 'cached' : 'unavailable');
+        setRouteError(routeData
+          ? 'Live routing is temporarily slow. Keeping the last successful route on screen.'
+          : `${message} The map is still interactive — retry routing when ready.`);
+      }
+    } finally {
+      setRouteLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -170,6 +212,7 @@ export default function CitizenDashboard() {
   const startGuidance = () => { setGuidanceStep(0); setGuidanceActive(true); setShowCriticalAlert(false); };
   const stopGuidance = () => { setGuidanceActive(false); setGuidanceStep(0); };
   const advanceGuidance = () => setGuidanceStep(step => Math.min(step + 1, dynamicSteps.length - 1));
+  const retryRoute = () => { if (browserLocation) void loadRoute(browserLocation.latitude, browserLocation.longitude); };
 
   const useMyLocation = () => {
     if (!navigator.geolocation) { setLocationStatus('Location unavailable'); return; }
@@ -198,24 +241,34 @@ export default function CitizenDashboard() {
 
     {guidanceActive && currentGuidance && <section className={`guidance-banner ${guidanceComplete ? 'complete' : ''}`}><div className="guidance-banner-icon">{guidanceComplete ? '✓' : '➜'}</div><div className="guidance-banner-copy"><span>{guidanceComplete ? 'DESTINATION REACHED' : `STEP ${guidanceStep + 1} OF ${dynamicSteps.length}`}</span><strong>{currentGuidance.title}</strong><p>{currentGuidance.detail}</p></div><div className="guidance-banner-metrics"><strong>{currentGuidance.distance}</strong><span>{currentGuidance.eta}</span></div><div className="guidance-progress"><span style={{width:`${guidanceProgress}%`}}/></div></section>}
 
-    <div className="map-status-row"><span><i className="status-dot green"/> {locationStatus}</span><span><i className="status-dot gold"/> {routeLoading ? 'Calculating real road route…' : routeData ? `${routeData.alternatives_considered} route options considered` : 'Route not calculated'}</span>{guidanceActive && <span className="navigation-live"><i className="status-dot blue"/> Navigation active</span>}</div>
-    {routeError && <div className="map-load-error">{routeError}</div>}
+    <div className="map-status-row">
+      <span><i className="status-dot green"/> {locationStatus}</span>
+      <span><i className={`status-dot ${routeFreshness === 'live' ? 'green' : routeFreshness === 'cached' ? 'gold' : 'blue'}`}/>{routeLoading ? 'Updating safest route in background…' : routeData ? `${routeData.alternatives_considered} route options considered` : 'Map ready · route not calculated'}</span>
+      {guidanceActive && <span className="navigation-live"><i className="status-dot blue"/> Navigation active</span>}
+    </div>
+
+    {routeError && <div className="route-status-banner" role="status"><span>⚡</span><p>{routeError}</p><button type="button" onClick={retryRoute}>Retry route</button></div>}
 
     <div className="map-layout">
-      <div className="map-panel"><InteractiveSafetyMap center={mapCenter} guidanceActive={guidanceActive} route={routeData}/><div className="map-overlay-card map-you"><strong>YOU</strong><span>{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span></div><div className="map-overlay-card map-risk-legend"><span><i className="legend-swatch route"/> Recommended route</span><span><i className="legend-swatch safe"/> Safe destination</span></div></div>
+      <div className="map-panel">
+        <InteractiveSafetyMap center={mapCenter} guidanceActive={guidanceActive} route={routeData}/>
+        <div className="map-overlay-card map-you"><strong>YOU</strong><span>{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span></div>
+        {routeLoading && <div className="route-calculating-chip" role="status"><span className="route-spinner"/>Calculating safest route… <small>Map stays interactive</small></div>}
+        <div className="map-overlay-card map-risk-legend"><span><i className="legend-swatch route"/> Recommended route</span><span><i className="legend-swatch safe"/> Safe destination</span></div>
+      </div>
       <aside className="route-panel">
         <span className="safe-eyebrow">{guidanceActive ? 'ACTIVE GUIDANCE' : 'RECOMMENDED EVACUATION'}</span>
-        <h2>{routeLoading ? 'Calculating…' : routeData?.destination_name ?? 'Use your location first'}</h2>
+        <h2>{routeData?.destination_name ?? (routeLoading ? 'Finding a safe destination…' : 'Use your location first')}</h2>
         <div className="route-metrics"><div><strong>{routeData ? formatDuration(routeData.duration_s) : '—'}</strong><span>ETA</span></div><div><strong>{routeData ? formatDistance(routeData.distance_m) : '—'}</strong><span>Distance</span></div><div><strong>{routeData ? `${routeData.prototype_safety_score}/100` : '—'}</strong><span>Prototype safety</span></div></div>
-        <div className="route-safety-note"><strong>{routeData ? '✓ Real road route calculated' : 'Waiting for current GPS'}</strong><p>{routeData ? `Compared ${routeData.alternatives_considered} road/destination options. Safety score is a prototype heuristic, not an official flood-clearance rating.` : 'Tap Use my location to find nearby facilities and calculate road routes.'}</p></div>
-        {routeData && <button type="button" className="figma-secondary" style={{width:'100%',marginBottom:10}} onClick={() => setShowRouteReasons(v => !v)}>WHY THIS ROUTE?</button>}
+        <div className={`route-safety-note ${routeFreshness === 'cached' ? 'cached-route-note' : ''}`}><strong>{routeData ? (routeFreshness === 'cached' ? '✓ Recent route kept on screen' : '✓ Real road route calculated') : 'Waiting for current GPS'}</strong><p>{routeData ? `Compared ${routeData.alternatives_considered} road/destination options. Safety score is a prototype heuristic, not an official flood-clearance rating.` : 'Tap Use my location to find nearby facilities and calculate road routes.'}</p></div>
+        {routeData && <button type="button" className="figma-secondary why-route-button" onClick={() => setShowRouteReasons(v => !v)}>WHY THIS ROUTE?</button>}
         {showRouteReasons && routeData && <div className="route-safety-note"><strong>Why JalRakshak chose this</strong>{routeData.reasons.map(reason => <p key={reason}>• {reason}</p>)}<p><b>Source:</b> {routeData.source}</p><p>{routeData.warning}</p></div>}
-        <div className="route-steps">{dynamicSteps.slice(0,6).map((step,index)=><div key={`${step.title}-${index}`} className={`${guidanceActive && index===guidanceStep?'current-step':''} ${guidanceActive && index<guidanceStep?'completed-step':''}`}><b>{guidanceActive&&index<guidanceStep?'✓':index+1}</b><span><strong>{step.title}</strong><small>{step.detail}</small></span></div>)}</div>
+        <div className="route-steps">{routeData ? dynamicSteps.slice(0,6).map((step,index)=><div key={`${step.title}-${index}`} className={`${guidanceActive && index===guidanceStep?'current-step':''} ${guidanceActive && index<guidanceStep?'completed-step':''}`}><b>{guidanceActive&&index<guidanceStep?'✓':index+1}</b><span><strong>{step.title}</strong><small>{step.detail}</small></span></div>) : <div className="route-empty-state"><b>…</b><span><strong>Map is ready</strong><small>Routing loads separately so you can keep panning and zooming.</small></span></div>}</div>
         {!guidanceActive ? <button type="button" className="figma-primary route-start" onClick={startGuidance} disabled={!routeData}>START GUIDANCE</button> : guidanceComplete ? <button type="button" className="figma-primary route-start guidance-finish" onClick={stopGuidance}>FINISH GUIDANCE</button> : <div className="guidance-actions"><button type="button" className="figma-primary route-start" onClick={advanceGuidance}>NEXT STEP</button><button type="button" className="figma-secondary guidance-stop" onClick={stopGuidance}>END GUIDANCE</button></div>}
         <button type="button" className="figma-danger-button route-help" onClick={requestHelp}>I CAN'T EVACUATE — GET HELP</button>
       </aside>
     </div>
-    <div className="map-bottom-cards"><article><span>🧭</span><div><strong>{routeData ? `${routeData.alternatives_considered} alternatives ranked` : 'Waiting for GPS'}</strong><small>Real road routes are compared before recommendation</small></div></article><article><span>🏫</span><div><strong>{routeData?.destination_name ?? 'Nearby facility lookup'}</strong><small>{routeData ? routeData.destination_type.replace('_',' ') : 'OpenStreetMap facilities'}</small></div></article><article><span>📡</span><div><strong>{guidanceActive?'Guidance mode active':'Routing services connected'}</strong><small>OpenStreetMap + OSRM</small></div></article></div>
+    <div className="map-bottom-cards"><article><span>🧭</span><div><strong>{routeData ? `${routeData.alternatives_considered} alternatives ranked` : routeLoading ? 'Ranking routes…' : 'Map ready'}</strong><small>{routeData ? 'Real road routes are compared before recommendation' : 'Routing runs in the background'}</small></div></article><article><span>🏫</span><div><strong>{routeData?.destination_name ?? 'Nearby facility lookup'}</strong><small>{routeData ? routeData.destination_type.replace('_',' ') : 'OpenStreetMap facilities'}</small></div></article><article><span>📡</span><div><strong>{routeFreshness === 'cached' ? 'Recent route fallback active' : guidanceActive ? 'Guidance mode active' : 'Routing services connected'}</strong><small>{routeFreshness === 'cached' ? 'Refreshing live route in background' : 'OpenStreetMap + OSRM'}</small></div></article></div>
   </section>;
 
   const renderSecondaryPanel = () => {
