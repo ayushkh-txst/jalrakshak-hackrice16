@@ -71,14 +71,24 @@ export type EvacuationRoute = {
   warning: string;
 };
 
+const routeRequests = new Map<string, Promise<EvacuationRoute>>();
+const routeKey = (latitude: number, longitude: number) => `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+
 export const citizenSafetyApi = {
   getContext(latitude: number, longitude: number): Promise<SafetyContext> {
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
     return apiRequest<SafetyContext>(`/safety/context?${params.toString()}`);
   },
   getEvacuationRoute(latitude: number, longitude: number): Promise<EvacuationRoute> {
+    const key = routeKey(latitude, longitude);
+    const existing = routeRequests.get(key);
+    if (existing) return existing;
+
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
-    return apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`, undefined, 5_500);
+    const request = apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`, undefined, 5_500)
+      .finally(() => routeRequests.delete(key));
+    routeRequests.set(key, request);
+    return request;
   },
   createEmergency(payload: EmergencyCreate): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>('/emergencies', { method: 'POST', body: JSON.stringify(payload) });
