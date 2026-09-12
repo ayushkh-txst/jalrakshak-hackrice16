@@ -70,4 +70,4 @@ window.addEventListener('jalrakshak:route-analysis',(event)=>{
 });
 
 const observer=new MutationObserver(()=>maybeEnhanceAssistant());
-observer.observe(document.body,{childList:true,subtree:true
+observer.observe(document.body,{childList:true,sub
