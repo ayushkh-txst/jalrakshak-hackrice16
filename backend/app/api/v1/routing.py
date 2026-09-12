@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import math
+import time
 from typing import Any
 
 import httpx
@@ -11,6 +13,14 @@ router = APIRouter()
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
+CACHE_TTL_SECONDS = 90
+_route_cache: dict[str, tuple[float, "EvacuationRoute"]] = {}
+
+_http = httpx.AsyncClient(
+    timeout=httpx.Timeout(5.5, connect=2.0),
+    headers={"User-Agent": "JalRakshak-HackRice/1.0"},
+    limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+)
 
 
 class RouteStep(BaseModel):
@@ -50,18 +60,47 @@ def _name_for(tags: dict[str, Any], fallback: str) -> str:
     return str(tags.get("name:en") or tags.get("name") or fallback)
 
 
+def _distance_hint_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    x = math.radians(lon2 - lon1) * math.cos(math.radians((lat1 + lat2) / 2))
+    y = math.radians(lat2 - lat1)
+    return math.sqrt(x * x + y * y) * 6_371_000
+
+
+def _cache_key(latitude: float, longitude: float) -> str:
+    # ~11 m buckets. Small movements reuse the route instead of hammering public APIs.
+    return f"{latitude:.4f},{longitude:.4f}"
+
+
+def _get_cached(latitude: float, longitude: float) -> EvacuationRoute | None:
+    entry = _route_cache.get(_cache_key(latitude, longitude))
+    if not entry:
+        return None
+    created_at, route = entry
+    if time.monotonic() - created_at > CACHE_TTL_SECONDS:
+        _route_cache.pop(_cache_key(latitude, longitude), None)
+        return None
+    return route
+
+
+def _set_cached(latitude: float, longitude: float, route: EvacuationRoute) -> None:
+    if len(_route_cache) > 200:
+        oldest = min(_route_cache, key=lambda key: _route_cache[key][0])
+        _route_cache.pop(oldest, None)
+    _route_cache[_cache_key(latitude, longitude)] = (time.monotonic(), route)
+
+
 async def _nearby_destinations(latitude: float, longitude: float) -> list[dict[str, Any]]:
+    # Keep this query deliberately small. Overpass is the slowest dependency in the path.
     query = f"""
-    [out:json][timeout:12];
+    [out:json][timeout:4];
     (
-      nwr(around:5000,{latitude},{longitude})[amenity~"^(shelter|community_centre|hospital|clinic|school|college|university)$"];
+      nwr(around:3500,{latitude},{longitude})[amenity~"^(shelter|community_centre|hospital|clinic|school|college|university)$"];
     );
-    out center tags 30;
+    out center tags 16;
     """
-    async with httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "JalRakshak-HackRice/1.0"}) as client:
-        response = await client.post(OVERPASS_URL, content=query)
-        response.raise_for_status()
-        payload = response.json()
+    response = await _http.post(OVERPASS_URL, content=query)
+    response.raise_for_status()
+    payload = response.json()
 
     destinations: list[dict[str, Any]] = []
     for element in payload.get("elements", []):
@@ -77,11 +116,13 @@ async def _nearby_destinations(latitude: float, longitude: float) -> list[dict[s
                 "name": _name_for(tags, "Nearby safe facility"),
                 "type": str(tags.get("amenity", "facility")),
                 "priority": _destination_priority(tags),
+                "air_distance_m": _distance_hint_m(latitude, longitude, float(lat), float(lon)),
             }
         )
 
-    destinations.sort(key=lambda item: item["priority"])
-    return destinations[:8]
+    # Priority first, then distance. Only route the best few candidates.
+    destinations.sort(key=lambda item: (item["priority"], item["air_distance_m"]))
+    return destinations[:5]
 
 
 async def _osrm_routes(origin_lat: float, origin_lon: float, destination: dict[str, Any]) -> list[dict[str, Any]]:
@@ -92,13 +133,12 @@ async def _osrm_routes(origin_lat: float, origin_lon: float, destination: dict[s
         "overview": "full",
         "geometries": "geojson",
     }
-    async with httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "JalRakshak-HackRice/1.0"}) as client:
-        response = await client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+    response = await _http.get(url, params=params)
+    response.raise_for_status()
+    data = response.json()
     if data.get("code") != "Ok":
         return []
-    return data.get("routes", [])[:3]
+    return data.get("routes", [])[:2]
 
 
 def _score_route(route: dict[str, Any], destination: dict[str, Any]) -> tuple[float, int, list[str]]:
@@ -108,9 +148,6 @@ def _score_route(route: dict[str, Any], destination: dict[str, Any]) -> tuple[fl
     steps = legs[0].get("steps", []) if legs else []
     maneuver_count = len(steps)
 
-    # Prototype safety ranking: prefer emergency/community facilities, then less exposure time,
-    # shorter distance, and fewer maneuvers. This is intentionally not presented as an
-    # official flood-clearance model until verified road-closure/flood-depth feeds are connected.
     category_penalty = destination["priority"] * 480.0
     score = duration + distance * 0.08 + maneuver_count * 10.0 + category_penalty
 
@@ -140,21 +177,27 @@ async def evacuation_route(
     latitude: float = Query(..., ge=-90, le=90),
     longitude: float = Query(..., ge=-180, le=180),
 ) -> EvacuationRoute:
+    cached = _get_cached(latitude, longitude)
+    if cached is not None:
+        return cached
+
     try:
-        destinations = await _nearby_destinations(latitude, longitude)
+        destinations = await asyncio.wait_for(_nearby_destinations(latitude, longitude), timeout=5.8)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Nearby safe-destination lookup failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Nearby safe-destination lookup failed quickly: {exc}") from exc
 
     if not destinations:
-        raise HTTPException(status_code=404, detail="No nearby evacuation facilities were found within 5 km")
+        raise HTTPException(status_code=404, detail="No nearby evacuation facilities were found within 3.5 km")
+
+    # Route candidates concurrently instead of waiting for one OSRM request after another.
+    tasks = [_osrm_routes(latitude, longitude, destination) for destination in destinations[:4]]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     candidates: list[tuple[float, int, list[str], dict[str, Any], dict[str, Any]]] = []
-    for destination in destinations[:5]:
-        try:
-            routes = await _osrm_routes(latitude, longitude, destination)
-        except Exception:
+    for destination, result in zip(destinations[:4], results):
+        if isinstance(result, Exception):
             continue
-        for route in routes:
+        for route in result:
             score, safety_score, reasons = _score_route(route, destination)
             candidates.append((score, safety_score, reasons, destination, route))
 
@@ -178,7 +221,7 @@ async def evacuation_route(
         if float(step.get("distance") or 0.0) > 5
     ][:8]
 
-    return EvacuationRoute(
+    result = EvacuationRoute(
         destination_name=destination["name"],
         destination_type=destination["type"],
         destination_latitude=destination["latitude"],
@@ -193,3 +236,5 @@ async def evacuation_route(
         source="OpenStreetMap nearby facilities + OSRM road routing",
         warning="Prototype safety ranking only. It does not yet include verified live road-closure or flood-depth geometry and must not be treated as official emergency navigation.",
     )
+    _set_cached(latitude, longitude, result)
+    return result
