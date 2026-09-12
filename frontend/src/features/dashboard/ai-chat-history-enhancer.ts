@@ -115,6 +115,8 @@ function deleteSession(id: string) {
     return;
   }
   saveSessions(sessions);
+  const controls = document.querySelector<HTMLElement>('.ai-history-controls');
+  if (controls) delete controls.dataset.navcatHistorySignature;
   applyHistoryUi();
 }
 
@@ -136,23 +138,34 @@ function historyListHtml() {
     </div>`).join('');
 }
 
+function historySignature() {
+  const activeId = ensureActiveSession();
+  const compact = readSessions().map((s) => `${s.id}:${s.title}:${s.messages?.length ?? 0}`).join('|');
+  return `${historyOpen ? 'open' : 'closed'}:${activeId}:${compact}`;
+}
+
 function applyHistoryUi() {
   if (applying) return;
   const screen = document.querySelector<HTMLElement>('.citizen-ai-screen');
   const controls = screen?.querySelector<HTMLElement>('.ai-history-controls');
   if (!screen || !controls) return;
-  applying = true;
-  syncActiveSession();
 
+  syncActiveSession();
+  const signature = historySignature();
+  if (controls.dataset.navcatHistorySignature === signature && controls.querySelector('.navcat-history-shell')) return;
+
+  applying = true;
   controls.innerHTML = `
     <div class="navcat-history-shell">
       <button type="button" class="navcat-history-toggle ${historyOpen ? 'active' : ''}" data-navcat-history>History</button>
       <button type="button" class="navcat-new-chat" data-navcat-new>+ New chat</button>
       ${historyOpen ? `<div class="navcat-history-menu"><div class="navcat-history-title">Chat history</div>${historyListHtml()}</div>` : ''}
     </div>`;
+  controls.dataset.navcatHistorySignature = signature;
 
   controls.querySelector<HTMLButtonElement>('[data-navcat-history]')?.addEventListener('click', () => {
     historyOpen = !historyOpen;
+    delete controls.dataset.navcatHistorySignature;
     applyHistoryUi();
   });
   controls.querySelector<HTMLButtonElement>('[data-navcat-new]')?.addEventListener('click', newChat);
@@ -210,16 +223,21 @@ document.addEventListener('submit', (event) => {
   if (!form?.matches?.('.ai-input-row')) return;
   draft = '';
   sessionStorage.removeItem(DRAFT_KEY);
-  window.setTimeout(syncActiveSession, 50);
+  window.setTimeout(() => {
+    syncActiveSession();
+    const controls = document.querySelector<HTMLElement>('.ai-history-controls');
+    if (controls) delete controls.dataset.navcatHistorySignature;
+    applyHistoryUi();
+  }, 80);
 }, true);
 
 document.addEventListener('click', (event) => {
   const target = event.target as HTMLElement | null;
-  if (!target?.closest('.navcat-history-shell')) {
-    if (historyOpen) {
-      historyOpen = false;
-      window.setTimeout(applyHistoryUi, 0);
-    }
+  if (!target?.closest('.navcat-history-shell') && historyOpen) {
+    historyOpen = false;
+    const controls = document.querySelector<HTMLElement>('.ai-history-controls');
+    if (controls) delete controls.dataset.navcatHistorySignature;
+    window.setTimeout(applyHistoryUi, 0);
   }
 });
 
