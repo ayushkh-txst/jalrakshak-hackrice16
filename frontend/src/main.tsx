@@ -20,6 +20,7 @@ import './features/dashboard/user-hazard-map-enhancer';
 import './features/dashboard/user-hazard-map-enhancer.css';
 import './features/dashboard/command-center-enhancer';
 import './features/dashboard/command-center-enhancer.css';
+import './features/dashboard/queue-selection-stability';
 import './features/dashboard/admin-dashboard-detail-enhancer';
 import './features/dashboard/admin-dashboard-detail-enhancer.css';
 import './features/dashboard/admin-dashboard-figma-fixes.css';
