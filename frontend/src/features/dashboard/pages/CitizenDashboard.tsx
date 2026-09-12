@@ -4,6 +4,11 @@ import './CitizenDashboard.css';
 
 type NavItem = 'Overview' | 'Live Map' | 'Alerts' | 'AI Assistant' | 'Emergency Help' | 'Recovery';
 
+type BrowserLocation = {
+  latitude: number;
+  longitude: number;
+} | null;
+
 const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: boolean }> = [
   { label: 'Overview', icon: '▦' },
   { label: 'Live Map', icon: '◫' },
@@ -13,11 +18,15 @@ const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: bo
   { label: 'Recovery', icon: '◷', muted: true },
 ];
 
+const DEMO_CENTER = { latitude: 27.9516, longitude: 85.6846 };
+
 export default function CitizenDashboard() {
   const session = authSession.get();
   const [activeNav, setActiveNav] = useState<NavItem>('Overview');
   const [showCriticalAlert, setShowCriticalAlert] = useState(true);
   const [helpRequested, setHelpRequested] = useState(false);
+  const [browserLocation, setBrowserLocation] = useState<BrowserLocation>(null);
+  const [locationStatus, setLocationStatus] = useState('Demo location');
 
   const displayName = useMemo(() => {
     const name = session?.user.name?.trim();
@@ -31,6 +40,15 @@ export default function CitizenDashboard() {
     .slice(0, 1)
     .toUpperCase();
 
+  const mapCenter = browserLocation ?? DEMO_CENTER;
+  const mapEmbedUrl = useMemo(() => {
+    const { latitude, longitude } = mapCenter;
+    const latSpan = 0.018;
+    const lonSpan = 0.028;
+    const bbox = `${longitude - lonSpan},${latitude - latSpan},${longitude + lonSpan},${latitude + latSpan}`;
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${latitude}%2C${longitude}`;
+  }, [mapCenter.latitude, mapCenter.longitude]);
+
   const signOut = () => {
     authSession.clear();
     window.history.replaceState({}, '', '/');
@@ -41,6 +59,31 @@ export default function CitizenDashboard() {
     setHelpRequested(true);
     setShowCriticalAlert(false);
     setActiveNav('Emergency Help');
+  };
+
+  const openGuide = () => {
+    setShowCriticalAlert(false);
+    setActiveNav('Live Map');
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('Location unavailable');
+      return;
+    }
+
+    setLocationStatus('Locating…');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setBrowserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocationStatus('Current location');
+      },
+      () => setLocationStatus('Permission not granted'),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
   };
 
   const renderOverview = () => (
@@ -89,7 +132,7 @@ export default function CitizenDashboard() {
         </div>
         <div className="safe-capacity-track"><span /></div>
         <div className="safe-actions">
-          <button type="button" className="figma-primary" onClick={() => setShowCriticalAlert(false)}>GUIDE ME</button>
+          <button type="button" className="figma-primary" onClick={openGuide}>GUIDE ME</button>
           <button type="button" className="figma-secondary">WHY THIS?</button>
         </div>
       </section>
@@ -102,6 +145,72 @@ export default function CitizenDashboard() {
         </div>
       </section>
     </>
+  );
+
+  const renderLiveMap = () => (
+    <section className="live-map-screen">
+      <div className="map-page-heading">
+        <div>
+          <span className="safe-eyebrow">LIVE SAFETY MAP</span>
+          <h1>Safest route around you</h1>
+          <p>Map tiles are live from OpenStreetMap. Flood zones, closures, and the evacuation recommendation are demo overlays until the live data feeds are connected.</p>
+        </div>
+        <button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button>
+      </div>
+
+      <div className="map-status-row">
+        <span><i className="status-dot green" /> {locationStatus}</span>
+        <span><i className="status-dot red" /> Critical flood zone nearby</span>
+        <span><i className="status-dot gold" /> 2 road closures</span>
+      </div>
+
+      <div className="map-layout">
+        <div className="map-panel">
+          <iframe
+            className="osm-map"
+            title="JalRakshak live safety map"
+            src={mapEmbedUrl}
+            loading="lazy"
+          />
+          <div className="map-overlay-card map-you">
+            <strong>YOU</strong>
+            <span>{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span>
+          </div>
+          <div className="map-overlay-card map-risk-legend">
+            <span><i className="legend-swatch critical" /> Critical risk</span>
+            <span><i className="legend-swatch route" /> Recommended route</span>
+            <span><i className="legend-swatch safe" /> Safe destination</span>
+          </div>
+        </div>
+
+        <aside className="route-panel">
+          <span className="safe-eyebrow">RECOMMENDED EVACUATION</span>
+          <h2>Shree Secondary School</h2>
+          <div className="route-metrics">
+            <div><strong>13 min</strong><span>ETA</span></div>
+            <div><strong>920 m</strong><span>Distance</span></div>
+            <div><strong>61%</strong><span>Capacity</span></div>
+          </div>
+          <div className="route-safety-note">
+            <strong>✓ Route currently passable</strong>
+            <p>Avoid the riverside road. The recommended path stays on higher ground and bypasses two reported closures.</p>
+          </div>
+          <div className="route-steps">
+            <div><b>1</b><span><strong>Head north</strong><small>Continue for 280 m</small></span></div>
+            <div><b>2</b><span><strong>Turn right at the market</strong><small>Stay on the upper road</small></span></div>
+            <div><b>3</b><span><strong>Continue to the school</strong><small>Safe-zone entrance is on the east side</small></span></div>
+          </div>
+          <button type="button" className="figma-primary route-start">START GUIDANCE</button>
+          <button type="button" className="figma-danger-button route-help" onClick={requestHelp}>I CAN'T EVACUATE — GET HELP</button>
+        </aside>
+      </div>
+
+      <div className="map-bottom-cards">
+        <article><span>🚧</span><div><strong>2 closures ahead</strong><small>Both excluded from recommended route</small></div></article>
+        <article><span>🏫</span><div><strong>Safe zone accepting arrivals</strong><small>Demo capacity: 61%</small></div></article>
+        <article><span>📡</span><div><strong>Live map connected</strong><small>OpenStreetMap base layer</small></div></article>
+      </div>
+    </section>
   );
 
   const renderSecondaryPanel = () => (
@@ -121,6 +230,12 @@ export default function CitizenDashboard() {
       <button type="button" className="figma-secondary back-overview" onClick={() => setActiveNav('Overview')}>Back to overview</button>
     </section>
   );
+
+  const renderActiveScreen = () => {
+    if (activeNav === 'Overview') return renderOverview();
+    if (activeNav === 'Live Map') return renderLiveMap();
+    return renderSecondaryPanel();
+  };
 
   return (
     <main className="figma-citizen-app">
@@ -173,7 +288,7 @@ export default function CitizenDashboard() {
         </header>
 
         <div className="figma-page-content">
-          {activeNav === 'Overview' ? renderOverview() : renderSecondaryPanel()}
+          {renderActiveScreen()}
         </div>
       </section>
 
@@ -193,7 +308,7 @@ export default function CitizenDashboard() {
               <div><span>UPDATED</span><strong>just now</strong></div>
             </div>
             <p className="critical-copy"><strong>Recommended action:</strong> Begin evacuation toward your assigned safe destination immediately.</p>
-            <button type="button" className="critical-guide" onClick={() => setShowCriticalAlert(false)}>GUIDE ME</button>
+            <button type="button" className="critical-guide" onClick={openGuide}>GUIDE ME</button>
             <div className="critical-actions">
               <button type="button" className="critical-help" onClick={requestHelp}>I NEED HELP</button>
               <button type="button" className="critical-details" onClick={() => setShowCriticalAlert(false)}>View Details</button>
