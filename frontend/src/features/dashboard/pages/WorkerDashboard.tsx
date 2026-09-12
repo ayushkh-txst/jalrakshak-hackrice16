@@ -1,11 +1,43 @@
 import { useEffect, useMemo, useState } from 'react';
 import { authSession } from '../../auth/auth-session';
-import { citizenSafetyApi, type EmergencyRecord, type EmergencyStatus } from '../api/citizen-safety.api';
+import { citizenSafetyApi, type EmergencyListFilters, type EmergencyRecord, type EmergencyStatus } from '../api/citizen-safety.api';
 import './WorkerDashboard.css';
 import './WorkerMapEnhancements.css';
 
 type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'chat' | 'report' | 'settings';
 type ViewName = 'queue' | 'map';
+type IncidentFilter = 'all' | 'new' | 'assigned' | 'en_route' | 'resolved' | 'live' | 'demo';
+
+const incidentFilters: Array<{ key: IncidentFilter; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'new', label: 'New' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'en_route', label: 'En Route' },
+  { key: 'resolved', label: 'Resolved' },
+  { key: 'live', label: 'Live only' },
+  { key: 'demo', label: 'Demo' },
+];
+
+function filterToApi(filter: IncidentFilter): EmergencyListFilters | undefined {
+  if (filter === 'new') return { status: 'submitted' };
+  if (filter === 'assigned') return { status: 'assigned' };
+  if (filter === 'en_route') return { status: 'en_route' };
+  if (filter === 'resolved') return { status: 'resolved' };
+  if (filter === 'live') return { is_demo: false };
+  if (filter === 'demo') return { is_demo: true };
+  return undefined;
+}
+
+function matchesIncidentFilter(record: EmergencyRecord, filter: IncidentFilter) {
+  if (record.status === 'cancelled') return false;
+  if (filter === 'all') return true;
+  if (filter === 'new') return record.status === 'submitted';
+  if (filter === 'assigned') return record.status === 'assigned';
+  if (filter === 'en_route') return record.status === 'en_route';
+  if (filter === 'resolved') return record.status === 'resolved';
+  if (filter === 'live') return !record.is_demo;
+  return Boolean(record.is_demo);
+}
 
 function Icon({ name }: { name: IconName }) {
   const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -30,6 +62,8 @@ function statusLabel(status: EmergencyStatus) {
 export default function WorkerDashboard() {
   const session = authSession.get();
   const [records, setRecords] = useState<EmergencyRecord[]>([]);
+  const [queueRecords, setQueueRecords] = useState<EmergencyRecord[]>([]);
+  const [activeFilter, setActiveFilter] = useState<IncidentFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -42,11 +76,16 @@ export default function WorkerDashboard() {
   const workerName = session?.user.name ?? 'Demo E-Worker';
   const workerId = session?.user.id ?? 'worker-demo';
 
-  const loadQueue = async () => {
+  const loadQueue = async (filter: IncidentFilter) => {
     try {
-      const data = (await citizenSafetyApi.listEmergencies()).filter((item) => item.status !== 'cancelled');
-      setRecords(data);
-      setSelectedId((current) => current && data.some((item) => item.id === current) ? current : data[0]?.id ?? null);
+      const allRequest = citizenSafetyApi.listEmergencies();
+      const filteredRequest = filter === 'all' ? allRequest : citizenSafetyApi.listEmergencies(filterToApi(filter));
+      const [allResponse, filteredResponse] = await Promise.all([allRequest, filteredRequest]);
+      const allData = allResponse.filter((item) => item.status !== 'cancelled');
+      const filteredData = filteredResponse.filter((item) => matchesIncidentFilter(item, filter));
+      setRecords(allData);
+      setQueueRecords(filteredData);
+      setSelectedId((current) => current && filteredData.some((item) => item.id === current) ? current : filteredData[0]?.id ?? null);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load emergency queue');
@@ -54,13 +93,15 @@ export default function WorkerDashboard() {
   };
 
   useEffect(() => {
-    void loadQueue();
-    const timer = window.setInterval(() => void loadQueue(), 5000);
+    setLoading(true);
+    void loadQueue(activeFilter);
+    const timer = window.setInterval(() => void loadQueue(activeFilter), 5000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [activeFilter]);
 
-  const selected = useMemo(() => records.find((item) => item.id === selectedId) ?? records[0] ?? null, [records, selectedId]);
+  const selected = useMemo(() => records.find((item) => item.id === selectedId) ?? null, [records, selectedId]);
   const pendingCount = records.filter((r) => r.status === 'submitted' && !r.is_demo).length;
+  const filterCount = (filter: IncidentFilter) => records.filter((record) => matchesIncidentFilter(record, filter)).length;
 
   const visibleMapRecords = useMemo(() => records.filter((record) => {
     if (!showDemo && record.is_demo) return false;
@@ -94,6 +135,7 @@ export default function WorkerDashboard() {
     try {
       const updated = await citizenSafetyApi.updateEmergency(selected.id, { status, responder_id: workerId, responder_name: workerName });
       setRecords((current) => current.map((item) => item.id === updated.id ? updated : item));
+      await loadQueue(activeFilter);
       setError('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to update incident'); }
     finally { setUpdating(false); }
@@ -134,9 +176,23 @@ export default function WorkerDashboard() {
 
       {activeView === 'queue' ? <>
         <section className="ops-queue-pane">
-          <header><h2>Approve Requests</h2><strong>Awaiting Approval: {pendingCount}</strong><span>Live SOS queue · auto-refresh 5s</span></header>
+          <header><h2>Approve Requests</h2><strong>Awaiting Approval: {pendingCount}</strong><span>{incidentFilters.find((filter) => filter.key === activeFilter)?.label} incidents · auto-refresh 5s</span></header>
+          <div className="command-center-filters incident-filter-grid" data-command-center-filters>
+            {incidentFilters.map((filter) => (
+              <button
+                type="button"
+                key={filter.key}
+                data-incident-filter={filter.key}
+                className={`${activeFilter === filter.key ? 'active' : ''} ${filter.key === 'demo' ? 'incident-filter-full-row' : ''}`.trim()}
+                aria-pressed={activeFilter === filter.key}
+                onClick={() => setActiveFilter(filter.key)}
+              >
+                <span>{filter.label}</span><b>{filterCount(filter.key)}</b>
+              </button>
+            ))}
+          </div>
           <div className="ops-queue-list">
-            {loading ? <div className="ops-empty">Loading emergency queue…</div> : records.length === 0 ? <div className="ops-empty">No SOS requests yet. Submit one from the Citizen dashboard and it will appear here.</div> : records.map((record) => (
+            {loading ? <div className="ops-empty">Loading emergency queue…</div> : queueRecords.length === 0 ? <div className="ops-empty">No {activeFilter === 'all' ? '' : `${incidentFilters.find((filter) => filter.key === activeFilter)?.label.toLowerCase()} `}incidents right now.</div> : queueRecords.map((record) => (
               <button key={record.id} className={selected?.id === record.id ? 'active' : ''} onClick={() => { setSelectedId(record.id); setShowMap(false); }}>
                 <div className="queue-top"><span>{record.id}</span>{record.is_demo ? <em className="demo-badge">DEMO</em> : record.status === 'submitted' ? <em>LIVE · NEW</em> : <em className="live-badge">LIVE</em>}<small>{timeAgo(record.created_at)}</small></div>
                 <h3>{record.citizen_name}</h3>
