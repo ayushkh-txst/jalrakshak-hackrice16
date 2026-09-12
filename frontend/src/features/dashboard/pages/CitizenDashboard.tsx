@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { authSession } from '../../auth/auth-session';
 import './CitizenDashboard.css';
 import './CitizenLiveMap.css';
@@ -10,6 +10,11 @@ type BrowserLocation = {
   longitude: number;
 } | null;
 
+type MapCenter = {
+  latitude: number;
+  longitude: number;
+};
+
 const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: boolean }> = [
   { label: 'Overview', icon: '▦' },
   { label: 'Live Map', icon: '◫' },
@@ -20,6 +25,182 @@ const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: bo
 ];
 
 const DEMO_CENTER = { latitude: 27.9516, longitude: 85.6846 };
+const SAFE_ZONE = { latitude: 27.9596, longitude: 85.6974 };
+
+const loadLeaflet = () =>
+  new Promise<any>((resolve, reject) => {
+    const existing = (window as Window & { L?: any }).L;
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+
+    if (!document.querySelector('link[data-jalrakshak-leaflet]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      link.dataset.jalrakshakLeaflet = 'true';
+      document.head.appendChild(link);
+    }
+
+    const previousScript = document.querySelector<HTMLScriptElement>('script[data-jalrakshak-leaflet]');
+    if (previousScript) {
+      previousScript.addEventListener('load', () => resolve((window as Window & { L?: any }).L), { once: true });
+      previousScript.addEventListener('error', reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.dataset.jalrakshakLeaflet = 'true';
+    script.onload = () => resolve((window as Window & { L?: any }).L);
+    script.onerror = reject;
+    document.body.appendChild(script);
+  });
+
+function InteractiveSafetyMap({ center }: { center: MapCenter }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [showRiskAreas, setShowRiskAreas] = useState(true);
+  const [showSafeZones, setShowSafeZones] = useState(true);
+  const [showRoute, setShowRoute] = useState(true);
+  const [mapError, setMapError] = useState(false);
+
+  useEffect(() => {
+    let map: any;
+    let disposed = false;
+
+    loadLeaflet()
+      .then((L) => {
+        if (disposed || !containerRef.current || !L) return;
+
+        map = L.map(containerRef.current, {
+          zoomControl: true,
+          attributionControl: true,
+          scrollWheelZoom: true,
+        }).setView([center.latitude, center.longitude], 13);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd',
+          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        }).addTo(map);
+
+        const userMarker = L.circleMarker([center.latitude, center.longitude], {
+          radius: 9,
+          color: '#ffffff',
+          weight: 4,
+          fillColor: '#3d7fe8',
+          fillOpacity: 1,
+        }).addTo(map);
+        userMarker.bindPopup('<strong>You are here</strong><br/>Current/demo citizen location');
+
+        if (showRiskAreas) {
+          const criticalArea = L.polygon(
+            [
+              [27.9480, 85.6700],
+              [27.9570, 85.6735],
+              [27.9600, 85.6840],
+              [27.9545, 85.6915],
+              [27.9460, 85.6885],
+              [27.9435, 85.6780],
+            ],
+            {
+              color: '#cf4a44',
+              weight: 3,
+              dashArray: '8 6',
+              fillColor: '#d95b53',
+              fillOpacity: 0.23,
+            },
+          ).addTo(map);
+          criticalArea.bindPopup('<strong>CRITICAL FLOOD RISK</strong><br/>Avoid this zone. Rapid inundation is possible.');
+
+          const highRiskArea = L.polygon(
+            [
+              [27.9510, 85.6910],
+              [27.9605, 85.6925],
+              [27.9620, 85.7045],
+              [27.9550, 85.7090],
+              [27.9485, 85.7020],
+            ],
+            {
+              color: '#dc8b4d',
+              weight: 3,
+              dashArray: '8 6',
+              fillColor: '#eca66d',
+              fillOpacity: 0.2,
+            },
+          ).addTo(map);
+          highRiskArea.bindPopup('<strong>HIGH FLOOD RISK</strong><br/>Conditions may worsen. Prepare to move to higher ground.');
+        }
+
+        if (showRoute) {
+          const route = L.polyline(
+            [
+              [center.latitude, center.longitude],
+              [27.9534, 85.6865],
+              [27.9558, 85.6898],
+              [27.9580, 85.6932],
+              [SAFE_ZONE.latitude, SAFE_ZONE.longitude],
+            ],
+            {
+              color: '#76623a',
+              weight: 6,
+              opacity: 0.92,
+              lineJoin: 'round',
+            },
+          ).addTo(map);
+          route.bindPopup('<strong>Recommended evacuation route</strong><br/>Demo route avoids marked risk areas and closures.');
+        }
+
+        if (showSafeZones) {
+          const safeIcon = L.divIcon({
+            className: 'jalrakshak-safe-marker',
+            html: '<span>✓</span>',
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+          });
+          const safeMarker = L.marker([SAFE_ZONE.latitude, SAFE_ZONE.longitude], { icon: safeIcon }).addTo(map);
+          safeMarker.bindPopup('<strong>Shree Secondary School</strong><br/>Recommended safe destination · Demo capacity 61%');
+        }
+
+        const closureIcon = L.divIcon({
+          className: 'jalrakshak-closure-marker',
+          html: '<span>!</span>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        L.marker([27.9530, 85.6900], { icon: closureIcon })
+          .addTo(map)
+          .bindPopup('<strong>Road closure</strong><br/>Riverside road temporarily blocked.');
+        L.marker([27.9567, 85.6825], { icon: closureIcon })
+          .addTo(map)
+          .bindPopup('<strong>Road closure</strong><br/>Low-lying crossing reported unsafe.');
+
+        window.setTimeout(() => map?.invalidateSize(), 80);
+      })
+      .catch(() => setMapError(true));
+
+    return () => {
+      disposed = true;
+      if (map) map.remove();
+    };
+  }, [center.latitude, center.longitude, showRiskAreas, showSafeZones, showRoute]);
+
+  return (
+    <>
+      <div ref={containerRef} className="interactive-safety-map" aria-label="Interactive JalRakshak safety map" />
+      {mapError && (
+        <div className="map-load-error">The interactive map could not load. Check your internet connection and refresh.</div>
+      )}
+      <div className="map-layer-controls" aria-label="Map layer controls">
+        <button type="button" className={showRiskAreas ? 'active' : ''} onClick={() => setShowRiskAreas((value) => !value)}>Risk areas</button>
+        <button type="button" className={showSafeZones ? 'active' : ''} onClick={() => setShowSafeZones((value) => !value)}>Safe zones</button>
+        <button type="button" className={showRoute ? 'active' : ''} onClick={() => setShowRoute((value) => !value)}>Route</button>
+      </div>
+    </>
+  );
+}
 
 export default function CitizenDashboard() {
   const session = authSession.get();
@@ -42,13 +223,6 @@ export default function CitizenDashboard() {
     .toUpperCase();
 
   const mapCenter = browserLocation ?? DEMO_CENTER;
-  const mapEmbedUrl = useMemo(() => {
-    const { latitude, longitude } = mapCenter;
-    const latSpan = 0.018;
-    const lonSpan = 0.028;
-    const bbox = `${longitude - lonSpan},${latitude - latSpan},${longitude + lonSpan},${latitude + latSpan}`;
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${latitude}%2C${longitude}`;
-  }, [mapCenter.latitude, mapCenter.longitude]);
 
   const signOut = () => {
     authSession.clear();
@@ -154,7 +328,7 @@ export default function CitizenDashboard() {
         <div>
           <span className="safe-eyebrow">LIVE SAFETY MAP</span>
           <h1>Safest route around you</h1>
-          <p>Map tiles are live from OpenStreetMap. Flood zones, closures, and the evacuation recommendation are demo overlays until the live data feeds are connected.</p>
+          <p>English-friendly live map tiles are provided by CARTO using OpenStreetMap data. Risk areas, closures, and the evacuation route are interactive demo overlays until the live flood feeds are connected.</p>
         </div>
         <button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button>
       </div>
@@ -167,18 +341,14 @@ export default function CitizenDashboard() {
 
       <div className="map-layout">
         <div className="map-panel">
-          <iframe
-            className="osm-map"
-            title="JalRakshak live safety map"
-            src={mapEmbedUrl}
-            loading="lazy"
-          />
+          <InteractiveSafetyMap center={mapCenter} />
           <div className="map-overlay-card map-you">
             <strong>YOU</strong>
             <span>{mapCenter.latitude.toFixed(4)}, {mapCenter.longitude.toFixed(4)}</span>
           </div>
           <div className="map-overlay-card map-risk-legend">
             <span><i className="legend-swatch critical" /> Critical risk</span>
+            <span><i className="legend-swatch high-risk" /> High risk</span>
             <span><i className="legend-swatch route" /> Recommended route</span>
             <span><i className="legend-swatch safe" /> Safe destination</span>
           </div>
@@ -209,7 +379,7 @@ export default function CitizenDashboard() {
       <div className="map-bottom-cards">
         <article><span>🚧</span><div><strong>2 closures ahead</strong><small>Both excluded from recommended route</small></div></article>
         <article><span>🏫</span><div><strong>Safe zone accepting arrivals</strong><small>Demo capacity: 61%</small></div></article>
-        <article><span>📡</span><div><strong>Live map connected</strong><small>OpenStreetMap base layer</small></div></article>
+        <article><span>📡</span><div><strong>Interactive map connected</strong><small>CARTO + OpenStreetMap base layer</small></div></article>
       </div>
     </section>
   );
