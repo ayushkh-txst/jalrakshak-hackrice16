@@ -15,7 +15,6 @@ let listening = false;
 let crisisMode = false;
 let lastLocationKey = '';
 let refreshTimer: number | null = null;
-let lastRouteNoticeKey = '';
 
 function createMessage(role: Message['role'], text: string): Message { return { id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`, role, text, createdAt:Date.now() }; }
 function loadHistory(): Message[] { try { const p=JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY)??'[]'); return Array.isArray(p)?p.filter((x:any)=>(x.role==='assistant'||x.role==='user')&&typeof x.text==='string').slice(-80):[]; } catch{return [];} }
@@ -66,7 +65,9 @@ function wireAssistant(section:HTMLElement){section.querySelector<HTMLFormElemen
 function maybeEnhanceAssistant(){const p=document.querySelector<HTMLElement>('.figma-placeholder-panel');if(p?.querySelector('h2')?.textContent?.trim()==='AI Assistant'){void refreshContext().finally(()=>renderAssistant(p));if(refreshTimer==null)refreshTimer=window.setInterval(()=>void refreshContext(),12000);return;}if(!document.querySelector('.citizen-ai-screen')&&refreshTimer!=null){clearInterval(refreshTimer);refreshTimer=null;}}
 
 window.addEventListener('jalrakshak:route-analysis',(event)=>{
- const n=(event as CustomEvent<EvacuationRoute>).detail;
- const prev=latestRoute;
- latestRoute=n;
- const key=`${n.destination_name}|${Math.round(n.distance_m)}|${Math.round(n
+ const next=(event as CustomEvent<EvacuationRoute>).detail;
+ if(next) latestRoute=next;
+});
+
+const observer=new MutationObserver(()=>maybeEnhanceAssistant());
+observer.observe(document.body,{childList:true,subtree:true
