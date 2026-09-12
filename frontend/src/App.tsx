@@ -22,7 +22,7 @@ function AuthRedirectBridge() {
       if (!session?.user) return;
 
       authSession.set(session);
-      navigate(session.user.role === 'worker' ? '/admin' : '/citizen', {
+      navigate(session.user.role === 'worker' ? '/responder' : '/citizen', {
         replace: true,
       });
     };
@@ -39,7 +39,7 @@ function ProtectedRoute({ role, children }: { role: 'citizen' | 'worker'; childr
 
   if (!session) return <Navigate to="/" replace />;
   if (session.user.role !== role) {
-    return <Navigate to={session.user.role === 'worker' ? '/admin' : '/citizen'} replace />;
+    return <Navigate to={session.user.role === 'worker' ? '/responder' : '/citizen'} replace />;
   }
 
   return <>{children}</>;
@@ -60,13 +60,14 @@ export default function App() {
           }
         />
         <Route
-          path="/admin"
+          path="/responder"
           element={
             <ProtectedRoute role="worker">
               <WorkerDashboard />
             </ProtectedRoute>
           }
         />
+        <Route path="/admin" element={<Navigate to="/responder" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
