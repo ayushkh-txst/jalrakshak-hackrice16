@@ -73,6 +73,12 @@ class EmergencyUpdate(BaseModel):
     responder_name: str | None = None
 
 
+class EmergencyLocationUpdate(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0)
+
+
 class EmergencyRecord(EmergencyCreate):
     id: str
     status: EmergencyStatus
@@ -129,6 +135,29 @@ def get_emergency(emergency_id: str, db: Session = Depends(get_db)) -> Emergency
     record = db.get(Emergency, emergency_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Emergency request not found")
+    return EmergencyRecord.model_validate(record)
+
+
+@router.patch("/{emergency_id}/location", response_model=EmergencyRecord)
+def update_emergency_location(
+    emergency_id: str,
+    payload: EmergencyLocationUpdate,
+    db: Session = Depends(get_db),
+) -> EmergencyRecord:
+    record = db.get(Emergency, emergency_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Emergency request not found")
+    if record.is_demo:
+        raise HTTPException(status_code=409, detail="Demo incidents do not accept live GPS updates")
+    if record.status in {EmergencyStatus.resolved.value, EmergencyStatus.cancelled.value}:
+        raise HTTPException(status_code=409, detail="Closed emergency requests do not accept location updates")
+
+    record.latitude = payload.latitude
+    record.longitude = payload.longitude
+    record.accuracy_m = payload.accuracy_m
+    record.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(record)
     return EmergencyRecord.model_validate(record)
 
 
