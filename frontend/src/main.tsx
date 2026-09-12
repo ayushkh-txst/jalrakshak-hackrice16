@@ -32,6 +32,7 @@ import './features/dashboard/admin-county-map-enhancer.css';
 import './features/dashboard/responder-routing-enhancer';
 import './features/dashboard/responder-live-map-enhancer';
 import './features/dashboard/incident-queue-finalizer';
+import './features/dashboard/incident-queue-finalizer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
