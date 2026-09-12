@@ -14,9 +14,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
 
     # Development-only demo accounts. Loaded from .env.
-    demo_citizen_email: str = "citizen@g0ne.local"
+    # Use example.com so Pydantic EmailStr accepts the addresses during validation.
+    demo_citizen_email: str = "citizen@example.com"
     demo_citizen_password: SecretStr = SecretStr("CitizenDemo2026!")
-    demo_worker_email: str = "worker@g0ne.local"
+    demo_worker_email: str = "worker@example.com"
     demo_worker_password: SecretStr = SecretStr("WorkerDemo2026!")
 
     model_config = SettingsConfigDict(
