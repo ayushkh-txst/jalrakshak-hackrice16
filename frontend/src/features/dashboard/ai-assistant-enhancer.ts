@@ -12,7 +12,7 @@ type Message = {
 type SpeechRecognitionCtor = new () => any;
 
 const CHAT_HISTORY_KEY = 'jalrakshak:citizen-ai-history:v1';
-const WELCOME_TEXT = 'Hi, I’m NavCat. Tell me what you need in your own words — even if it is short or messy.';
+const WELCOME_TEXT = 'Hi, I’m NavCat. I’m here to help you stay safe. I can check your current risk, find a safer place, guide you there, or help you reach emergency support. What can I help you with?';
 
 let latestRoute: EvacuationRoute | null = null;
 let latestSafety: SafetyContext | null = null;
@@ -159,7 +159,9 @@ function renderAssistant(section: HTMLElement) {
 function clickSidebarNav(label: string) {
   const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.figma-nav button'));
   const target = buttons.find((button) => button.textContent?.replace(/\s+/g, ' ').trim().includes(label));
-  target?.click();
+  if (!target) return false;
+  target.click();
+  return true;
 }
 
 function executeResultAction(action: string, phone?: string) {
@@ -168,10 +170,11 @@ function executeResultAction(action: string, phone?: string) {
     return;
   }
   if (action === 'open_map') {
-    clickSidebarNav('Live Map');
-    window.setTimeout(() => {
-      document.querySelector<HTMLButtonElement>('.location-button')?.click();
-    }, 120);
+    const opened = clickSidebarNav('Live Map');
+    if (!opened) return;
+    // Do not immediately fire another synthetic click while React is changing screens.
+    // If GPS was already captured, the Live Map effect loads the route automatically.
+    // If not, the map stays stable and the user can explicitly grant location permission.
     return;
   }
   if (action === 'call' && phone) {
