@@ -3,6 +3,21 @@ import { authSession } from '../../auth/auth-session';
 import { citizenSafetyApi, type EmergencyRecord, type EmergencyStatus } from '../api/citizen-safety.api';
 import './WorkerDashboard.css';
 
+type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'chat' | 'report' | 'settings';
+
+function Icon({ name }: { name: IconName }) {
+  const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  if (name === 'dashboard') return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>;
+  if (name === 'map') return <svg {...common}><path d="M3 6.5 8.5 4l7 3 5.5-2.5v13L15.5 20l-7-3L3 19.5z"/><path d="M8.5 4v13M15.5 7v13"/></svg>;
+  if (name === 'incident') return <svg {...common}><path d="M12 3 3 20h18L12 3Z"/><path d="M12 9v4M12 17h.01"/></svg>;
+  if (name === 'queue') return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 2.5 2.5L16 9"/></svg>;
+  if (name === 'chat') return <svg {...common}><path d="M4 5h16v11H8l-4 3z"/><path d="M8 9h8M8 12h5"/></svg>;
+  if (name === 'report') return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 16v-3M12 16V9M16 16v-6"/></svg>;
+  return <svg {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1v.1H9.6V21a1.7 1.7 0 0 0-.4-1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 3.8 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H2.1V9.6h.1a1.7 1.7 0 0 0 1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.26 3.4l.06.06A1.7 1.7 0 0 0 8.2 3.8a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V2.1h4v.1a1.7 1.7 0 0 0 .4 1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.2c.13.37.34.7.6 1 .28.26.63.4 1 .4h.1v4H21c-.37 0-.72.14-1 .4-.26.3-.47.63-.6 1Z"/></svg>;
+}
+
+const statusOrder: EmergencyStatus[] = ['submitted', 'assigned', 'en_route', 'resolved'];
+
 export default function WorkerDashboard() {
   const session = authSession.get();
   const [records, setRecords] = useState<EmergencyRecord[]>([]);
@@ -10,6 +25,7 @@ export default function WorkerDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   const workerName = session?.user.name ?? 'Demo E-Worker';
   const workerId = session?.user.id ?? 'worker-demo';
@@ -22,9 +38,7 @@ export default function WorkerDashboard() {
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load emergency queue');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   useEffect(() => {
@@ -34,29 +48,17 @@ export default function WorkerDashboard() {
   }, []);
 
   const selected = useMemo(() => records.find((item) => item.id === selectedId) ?? records[0] ?? null, [records, selectedId]);
-  const counts = useMemo(() => ({
-    open: records.filter((r) => r.status !== 'resolved').length,
-    submitted: records.filter((r) => r.status === 'submitted').length,
-    active: records.filter((r) => r.status === 'assigned' || r.status === 'en_route').length,
-    resolved: records.filter((r) => r.status === 'resolved').length,
-  }), [records]);
+  const pendingCount = records.filter((r) => r.status === 'submitted').length;
 
   const updateStatus = async (status: EmergencyStatus) => {
     if (!selected) return;
     setUpdating(true);
     try {
-      const updated = await citizenSafetyApi.updateEmergency(selected.id, {
-        status,
-        responder_id: workerId,
-        responder_name: workerName,
-      });
+      const updated = await citizenSafetyApi.updateEmergency(selected.id, { status, responder_id: workerId, responder_name: workerName });
       setRecords((current) => current.map((item) => item.id === updated.id ? updated : item));
       setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to update incident');
-    } finally {
-      setUpdating(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to update incident'); }
+    finally { setUpdating(false); }
   };
 
   const timeAgo = (iso: string) => {
@@ -67,71 +69,90 @@ export default function WorkerDashboard() {
   };
 
   const mapUrl = selected ? `https://www.openstreetmap.org/export/embed.html?bbox=${selected.longitude - 0.01}%2C${selected.latitude - 0.007}%2C${selected.longitude + 0.01}%2C${selected.latitude + 0.007}&layer=mapnik&marker=${selected.latitude}%2C${selected.longitude}` : '';
+  const currentStatusIndex = selected ? statusOrder.indexOf(selected.status) : -1;
 
   return (
-    <main className="worker-app">
-      <header className="worker-topbar">
-        <div className="worker-brand"><span>JALRAKSHAK · RESPONDER OPERATIONS</span><h1>Emergency Rescue Queue</h1></div>
-        <div className="worker-live"><i /> LIVE · AUTO-REFRESH 5s</div>
-      </header>
+    <main className="ops-shell">
+      <aside className="ops-sidebar">
+        <div className="ops-logo-row"><div className="ops-logo">◒</div><div><strong>JalRakshak</strong><span>Emergency Response</span></div></div>
+        <div className="ops-role">Responder</div>
+        <nav className="ops-nav">
+          <button><Icon name="dashboard"/><span>Dashboard</span></button>
+          <button><Icon name="map"/><span>Live Map</span></button>
+          <button><Icon name="incident"/><span>All Incidents</span></button>
+          <button className="active"><Icon name="queue"/><span>Emergency Queue</span>{pendingCount > 0 && <b>{pendingCount}</b>}</button>
+          <button><Icon name="chat"/><span>AI Assistant</span></button>
+          <button><Icon name="report"/><span>Reports</span></button>
+          <button><Icon name="settings"/><span>Settings</span></button>
+        </nav>
+        <div className="ops-user"><span>{workerName.slice(0,1).toUpperCase()}</span><div><strong>{workerName}</strong><small>Responder</small></div><b>›</b></div>
+      </aside>
 
-      <section className="worker-summary">
-        <article><span>Open incidents</span><strong>{counts.open}</strong></article>
-        <article><span>Unassigned</span><strong>{counts.submitted}</strong></article>
-        <article><span>Active response</span><strong>{counts.active}</strong></article>
-        <article><span>Resolved</span><strong>{counts.resolved}</strong></article>
+      <section className="ops-queue-pane">
+        <header><h2>Approve Requests</h2><strong>Awaiting Approval: {pendingCount}</strong><span>Live SOS queue · auto-refresh 5s</span></header>
+        <div className="ops-queue-list">
+          {loading ? <div className="ops-empty">Loading emergency queue…</div> : records.length === 0 ? <div className="ops-empty">No SOS requests yet. Submit one from the Citizen dashboard and it will appear here.</div> : records.map((record) => (
+            <button key={record.id} className={selected?.id === record.id ? 'active' : ''} onClick={() => { setSelectedId(record.id); setShowMap(false); }}>
+              <div className="queue-top"><span>{record.id}</span>{record.status === 'submitted' && <em>NEW</em>}<small>{timeAgo(record.created_at)}</small></div>
+              <h3>{record.citizen_name}</h3>
+              <div className="queue-bottom"><span className={`type ${record.emergency_type}`}>{record.emergency_type === 'rescue' ? 'Trapped Response' : record.emergency_type === 'medical' ? 'Medical Response' : 'Evacuation Response'}</span><strong>{record.people_count} {record.people_count === 1 ? 'person' : 'people'}</strong></div>
+            </button>
+          ))}
+        </div>
+        <div className="ops-citizen-sos"><span>CITIZEN SOS</span><button type="button">I NEED HELP</button></div>
       </section>
 
-      {error && <div className="worker-error">{error}</div>}
-
-      <section className="worker-grid">
-        <div className="worker-panel">
-          <div className="worker-panel-title"><h2>Incoming SOS</h2><button type="button" onClick={() => void loadQueue()}>Refresh</button></div>
-          <div className="incident-list">
-            {loading ? <div className="incident-empty">Loading responder queue…</div> : records.length === 0 ? <div className="incident-empty">No SOS requests yet. Submit one from the Citizen dashboard and it will appear here.</div> : records.map((record) => (
-              <button key={record.id} type="button" className={`incident-card ${selected?.id === record.id ? 'active' : ''} ${record.risk_level === 'critical' ? 'critical' : record.risk_level === 'high' ? 'high' : ''}`} onClick={() => setSelectedId(record.id)}>
-                <div className="incident-card-top"><span className="incident-id">{record.id}</span><span className="incident-priority">{record.status === 'submitted' ? 'NEW' : record.status.replace('_', ' ').toUpperCase()}</span></div>
-                <h3>{record.emergency_type.toUpperCase()} · {record.citizen_name}</h3>
-                <div className="incident-meta"><span>{record.people_count} {record.people_count === 1 ? 'person' : 'people'}</span><span>{record.risk_level ? `${record.risk_level.toUpperCase()} RISK` : 'Risk pending'}</span><span>{timeAgo(record.created_at)}</span></div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="worker-panel">
-          {!selected ? <div className="incident-empty">Select an emergency request to view details.</div> : (
-            <div className="incident-detail">
-              <div className="incident-hero">
-                <div><span className="emergency-label">ACTIVE INCIDENT</span><h2>{selected.emergency_type.toUpperCase()} · {selected.citizen_name}</h2><div className="incident-meta"><span>{selected.id}</span><span>Created {timeAgo(selected.created_at)}</span></div></div>
-                <span className={`status-pill ${selected.status}`}>{selected.status.replace('_', ' ').toUpperCase()}</span>
-              </div>
-
-              <div className="detail-grid">
-                <div><span>People</span><strong>{selected.people_count}</strong></div>
-                <div><span>Risk score</span><strong>{selected.risk_score ?? '—'}{selected.risk_score !== null && selected.risk_score !== undefined ? '/100' : ''}</strong></div>
-                <div><span>GPS accuracy</span><strong>{selected.accuracy_m ? `±${Math.round(selected.accuracy_m)} m` : 'Demo location'}</strong></div>
-              </div>
-
-              <div className="worker-map"><iframe title="Citizen emergency location" src={mapUrl} loading="lazy" /></div>
-
-              <div className="notes-box"><span>RESPONDER NOTES</span><p>{selected.notes || 'No additional notes provided.'}</p></div>
-
-              <div className="environment-grid">
-                <div><span>Rain next 6h</span><strong>{selected.precipitation_next_6h_mm !== null && selected.precipitation_next_6h_mm !== undefined ? `${selected.precipitation_next_6h_mm.toFixed(1)} mm` : '—'}</strong></div>
-                <div><span>River discharge</span><strong>{selected.river_discharge_m3s !== null && selected.river_discharge_m3s !== undefined ? `${selected.river_discharge_m3s.toFixed(1)} m³/s` : '—'}</strong></div>
-                <div><span>Latitude</span><strong>{selected.latitude.toFixed(5)}</strong></div>
-                <div><span>Longitude</span><strong>{selected.longitude.toFixed(5)}</strong></div>
-              </div>
-
-              <div className="worker-actions">
-                <button type="button" className="assign" disabled={updating || selected.status !== 'submitted'} onClick={() => void updateStatus('assigned')}>ASSIGN TO ME</button>
-                <button type="button" className="enroute" disabled={updating || selected.status !== 'assigned'} onClick={() => void updateStatus('en_route')}>MARK EN ROUTE</button>
-                <button type="button" className="resolve" disabled={updating || selected.status === 'resolved'} onClick={() => void updateStatus('resolved')}>RESOLVE INCIDENT</button>
-              </div>
-              {selected.responder_name && <div className="worker-footer-note">Assigned responder: {selected.responder_name}</div>}
+      <section className="ops-detail-pane">
+        {error && <div className="ops-error">{error}</div>}
+        {!selected ? <div className="ops-detail-empty">Select an emergency request to view details.</div> : <>
+          <header className="ops-detail-header">
+            <div><div className="ops-id-row"><span>{selected.id}</span><em>{selected.emergency_type === 'rescue' ? 'Trapped Response' : selected.emergency_type === 'medical' ? 'Medical Response' : 'Evacuation Response'}</em></div><h1>{selected.citizen_name}</h1><p>Reported by {selected.citizen_name} · {selected.people_count} {selected.people_count === 1 ? 'person' : 'people'} · {timeAgo(selected.created_at)}</p></div>
+            <div className="ops-header-actions">
+              <button className="primary" disabled={updating || selected.status !== 'submitted'} onClick={() => void updateStatus('assigned')}>Assign Responder</button>
+              <button onClick={() => setShowMap((value) => !value)}>View on Map</button>
             </div>
-          )}
-        </div>
+          </header>
+
+          {showMap && <div className="ops-inline-map"><iframe title="Citizen emergency location" src={mapUrl} loading="lazy"/></div>}
+
+          <div className="ops-main-grid">
+            <article className="ops-card ops-timeline">
+              <span className="ops-card-label">RESPONSE TIMELINE</span>
+              {[
+                ['Received','Request entered queue'],
+                ['Acknowledged','Responder review'],
+                ['Assigned', selected.responder_name || 'Awaiting responder'],
+                ['En Route','Responder traveling'],
+                ['On Scene','Field response'],
+                ['Resolved','Incident closed'],
+              ].map(([label, sub], index) => {
+                const stageMap = [0,0,1,2,3,3];
+                const done = currentStatusIndex >= stageMap[index];
+                const current = (selected.status === 'submitted' && index === 0) || (selected.status === 'assigned' && index === 2) || (selected.status === 'en_route' && index === 3) || (selected.status === 'resolved' && index === 5);
+                return <div className={`timeline-row ${done ? 'done' : ''} ${current ? 'current' : ''}`} key={label}><i>{done ? '✓' : ''}</i><div><strong>{label}{current && <em>CURRENT</em>}</strong><span>{sub}</span></div></div>;
+              })}
+              <div className="timeline-actions">
+                <button disabled={updating || selected.status !== 'assigned'} onClick={() => void updateStatus('en_route')}>Mark En Route</button>
+                <button disabled={updating || selected.status === 'resolved'} onClick={() => void updateStatus('resolved')}>Resolve Incident</button>
+              </div>
+            </article>
+
+            <div className="ops-side-stack">
+              <article className="ops-card responder-card"><span className="ops-card-label">ASSIGNED RESPONDER</span>{selected.responder_name ? <div className="responder-row"><span>{selected.responder_name.slice(0,2).toUpperCase()}</span><div><strong>{selected.responder_name}</strong><small>Responder unit · assigned</small></div><em>{selected.status === 'en_route' ? '● En Route' : selected.status === 'resolved' ? '✓ Resolved' : '● Assigned'}</em></div> : <div className="unassigned">No responder assigned yet.</div>}</article>
+
+              <article className="ops-card ai-card"><span className="ops-card-label">▱ AI GUIDANCE</span><p>{selected.risk_score !== null && selected.risk_score !== undefined && selected.risk_score >= 70 ? 'High flood-risk context detected. Prioritize rapid assignment and verify road access before dispatch.' : 'Review live GPS, rainfall, and river context before assigning the closest available response unit.'}</p>{selected.notes && <p><strong>Citizen note:</strong> {selected.notes}</p>}</article>
+
+              <article className="ops-card metric-card">
+                <div><span>RAIN NEXT 6H</span><strong>{selected.precipitation_next_6h_mm != null ? `${selected.precipitation_next_6h_mm.toFixed(1)} mm` : '—'}</strong></div>
+                <div><span>RISK SCORE</span><strong>{selected.risk_score != null ? `${selected.risk_score} / 100` : '—'}</strong></div>
+                <div><span>GPS ACCURACY</span><strong>{selected.accuracy_m != null ? `±${Math.round(selected.accuracy_m)}m` : '—'}</strong></div>
+                <div><span>ELAPSED</span><strong>{timeAgo(selected.created_at).replace(' ago','')}</strong></div>
+                <div><span>RIVER DISCHARGE</span><strong>{selected.river_discharge_m3s != null ? `${selected.river_discharge_m3s.toFixed(1)} m³/s` : '—'}</strong></div>
+                <div><span>LOCATION</span><strong>{selected.latitude.toFixed(4)}, {selected.longitude.toFixed(4)}</strong></div>
+              </article>
+            </div>
+          </div>
+        </>}
       </section>
     </main>
   );
