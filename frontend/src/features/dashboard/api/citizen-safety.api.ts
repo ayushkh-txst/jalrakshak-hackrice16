@@ -55,6 +55,16 @@ export type EvacuationRouteStep = {
   duration_s: number;
 };
 
+export type ScreenedRoute = {
+  id?: string;
+  status: 'rejected' | 'viable' | 'recommended';
+  distance_m?: number;
+  duration_s?: number;
+  prototype_safety_score?: number;
+  rejection_reasons?: string[];
+  geometry?: number[][];
+};
+
 export type EvacuationRoute = {
   destination_name: string;
   destination_type: string;
@@ -69,6 +79,7 @@ export type EvacuationRoute = {
   viable_count?: number;
   recommended_count?: number;
   screening_status?: 'pending' | 'complete';
+  screened_routes?: ScreenedRoute[];
   prototype_safety_score: number;
   reasons: string[];
   source: string;
@@ -77,6 +88,11 @@ export type EvacuationRoute = {
 
 const routeRequests = new Map<string, Promise<EvacuationRoute>>();
 const routeKey = (latitude: number, longitude: number) => `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+
+function publishRouteAnalysis(route: EvacuationRoute) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<EvacuationRoute>('jalrakshak:route-analysis', { detail: route }));
+}
 
 export const citizenSafetyApi = {
   getContext(latitude: number, longitude: number): Promise<SafetyContext> {
@@ -90,6 +106,10 @@ export const citizenSafetyApi = {
 
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
     const request = apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`, undefined, 5_500)
+      .then((route) => {
+        publishRouteAnalysis(route);
+        return route;
+      })
       .finally(() => routeRequests.delete(key));
     routeRequests.set(key, request);
     return request;
