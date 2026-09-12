@@ -1,4 +1,6 @@
 import { FormEvent, useState } from 'react';
+import { authApi } from '../api/auth.api';
+import { ApiError } from '../../../lib/api-client';
 
 const ShieldMark = ({ large = false }: { large?: boolean }) => (
   <svg className={large ? 'shield-mark shield-mark--large' : 'shield-mark'} viewBox="0 0 64 64" aria-hidden="true">
@@ -58,11 +60,59 @@ const SceneArt = () => (
   </svg>
 );
 
+function validateEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState(() => localStorage.getItem('g0ne:remembered-email') ?? '');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(Boolean(localStorage.getItem('g0ne:remembered-email')));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!validateEmail(normalizedEmail)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await authApi.login({ email: normalizedEmail, password });
+
+      if (rememberMe) localStorage.setItem('g0ne:remembered-email', normalizedEmail);
+      else localStorage.removeItem('g0ne:remembered-email');
+
+      setPassword('');
+      setSuccess(`Signed in as ${result.user.name}. Preparing your ${result.user.role === 'worker' ? 'E-worker' : 'citizen'} workspace…`);
+
+      // Keep the access token out of localStorage/sessionStorage. A shared auth provider
+      // will own it once the dashboard shell is connected.
+      window.dispatchEvent(new CustomEvent('g0ne:authenticated', { detail: result }));
+    } catch (cause) {
+      if (cause instanceof ApiError) {
+        if (cause.status === 401 || cause.status === 403) setError('Email or password is incorrect.');
+        else if (cause.status === 408) setError('The server is taking too long to respond. Try again.');
+        else if (cause.status === 0) setError('Authentication service is unavailable. Make sure the backend is running.');
+        else setError('We could not sign you in. Please try again.');
+      } else {
+        setError('We could not sign you in. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -96,26 +146,31 @@ export default function LoginPage() {
           <form onSubmit={submit} noValidate>
             <label className="field">
               <span className="field-icon"><MailIcon /></span>
-              <input type="email" placeholder="Email address" autoComplete="email" aria-label="Email address" required />
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" autoComplete="email" aria-label="Email address" disabled={isSubmitting} required />
             </label>
             <label className="field">
               <span className="field-icon"><LockIcon /></span>
-              <input type={showPassword ? 'text' : 'password'} placeholder="Password" autoComplete="current-password" aria-label="Password" required/>
-              <button className="field-action" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(v => !v)}><EyeIcon hidden={showPassword} /></button>
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" autoComplete="current-password" aria-label="Password" disabled={isSubmitting} required/>
+              <button className="field-action" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(v => !v)} disabled={isSubmitting}><EyeIcon hidden={showPassword} /></button>
             </label>
 
             <div className="form-options">
-              <label className="remember"><input type="checkbox"/> <span>Remember me</span></label>
-              <button type="button" className="link-button">Forgot password?</button>
+              <label className="remember"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} disabled={isSubmitting}/> <span>Remember me</span></label>
+              <button type="button" className="link-button" disabled={isSubmitting}>Forgot password?</button>
             </div>
 
-            <button className="sign-in" type="submit">Sign in <span>→</span></button>
+            {error && <div className="auth-message auth-message--error" role="alert">{error}</div>}
+            {success && <div className="auth-message auth-message--success" role="status">{success}</div>}
+
+            <button className="sign-in" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? <><span className="spinner" aria-hidden="true"/> Signing in…</> : <>Sign in <span>→</span></>}
+            </button>
           </form>
 
           <div className="divider"><span/><small>or continue with</small><span/></div>
           <div className="socials">
-            <button type="button" className="google"><span className="social-icon"><GoogleIcon /></span><span>Continue with<br/>Google</span></button>
-            <button type="button" className="github"><span className="social-icon"><GitHubIcon /></span><span>Continue with<br/>GitHub</span></button>
+            <button type="button" className="google" disabled={isSubmitting}><span className="social-icon"><GoogleIcon /></span><span>Continue with<br/>Google</span></button>
+            <button type="button" className="github" disabled={isSubmitting}><span className="social-icon"><GitHubIcon /></span><span>Continue with<br/>GitHub</span></button>
           </div>
           <p className="contact">Don't have an account? <strong>Contact your administrator</strong></p>
         </div>
