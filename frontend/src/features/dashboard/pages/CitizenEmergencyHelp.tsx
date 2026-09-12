@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { citizenSafetyApi, type EmergencyRecord, type EmergencyType, type SafetyContext } from '../api/citizen-safety.api';
 import './CitizenEmergencyHelp.css';
 
@@ -17,6 +17,13 @@ type PositionState = {
   label: string;
 };
 
+const TRACKING_STEPS = [
+  { key: 'submitted', title: 'Request received', detail: 'Your SOS is in the responder queue.' },
+  { key: 'assigned', title: 'Responder assigned', detail: 'A response unit has accepted your request.' },
+  { key: 'en_route', title: 'Help is on the way', detail: 'Your responder is traveling to your location.' },
+  { key: 'resolved', title: 'Response complete', detail: 'The responder marked this incident resolved.' },
+] as const;
+
 export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackLatitude, fallbackLongitude, onBack }: Props) {
   const [position, setPosition] = useState<PositionState>({ latitude: fallbackLatitude, longitude: fallbackLongitude, accuracy: null, label: 'Demo location' });
   const [safety, setSafety] = useState<SafetyContext | null>(null);
@@ -27,6 +34,8 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
   const [submitting, setSubmitting] = useState(false);
   const [record, setRecord] = useState<EmergencyRecord | null>(null);
   const [submitError, setSubmitError] = useState('');
+  const [trackingError, setTrackingError] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
 
   const refreshSafety = async (latitude: number, longitude: number) => {
@@ -36,6 +45,24 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
   };
 
   useEffect(() => { void refreshSafety(position.latitude, position.longitude); }, []);
+
+  useEffect(() => {
+    if (!record || record.status === 'resolved' || record.status === 'cancelled') return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const latest = await citizenSafetyApi.getEmergency(record.id);
+        if (active) {
+          setRecord(latest);
+          setTrackingError('');
+        }
+      } catch (error) {
+        if (active) setTrackingError(error instanceof Error ? error.message : 'Unable to refresh responder status');
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 3000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [record?.id, record?.status]);
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return;
@@ -64,34 +91,90 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
     finally { setSubmitting(false); }
   };
 
-  if (record) return (
-    <section className="emergency-screen emergency-confirmed">
-      <div className="emergency-confirm-icon">✓</div><span className="safe-eyebrow">REQUEST SENT</span>
-      <h1>Help request received</h1><p>Your request is now in the responder queue. Keep your phone available and move only if it is safe to do so.</p>
-      <div className="emergency-ticket"><div><span>REQUEST ID</span><strong>{record.id}</strong></div><div><span>STATUS</span><strong>{record.status.toUpperCase()}</strong></div><div><span>LOCATION</span><strong>{record.latitude.toFixed(5)}, {record.longitude.toFixed(5)}</strong></div></div>
-      <button type="button" className="figma-secondary emergency-back" onClick={onBack}>Back to overview</button>
-    </section>
-  );
+  const cancelRequest = async () => {
+    if (!record || record.status !== 'submitted') return;
+    setCancelling(true); setTrackingError('');
+    try { setRecord(await citizenSafetyApi.cancelEmergency(record.id)); }
+    catch (error) { setTrackingError(error instanceof Error ? error.message : 'Unable to cancel request'); }
+    finally { setCancelling(false); }
+  };
+
+  const currentStepIndex = useMemo(() => {
+    if (!record) return -1;
+    if (record.status === 'assigned') return 1;
+    if (record.status === 'en_route') return 2;
+    if (record.status === 'resolved') return 3;
+    return 0;
+  }, [record]);
+
+  if (record) {
+    const cancelled = record.status === 'cancelled';
+    const headline = cancelled ? 'Request cancelled' : record.status === 'submitted' ? 'Waiting for a responder' : record.status === 'assigned' ? 'Responder assigned' : record.status === 'en_route' ? 'Help is on the way' : 'Response complete';
+    const copy = cancelled ? 'This emergency request has been closed. You can return to the overview and create a new request if needed.' : record.status === 'submitted' ? 'Your SOS is active and visible in the responder queue. This page checks for updates every 3 seconds.' : record.status === 'assigned' ? `${record.responder_name ?? 'A responder'} has accepted your request and is preparing to respond.` : record.status === 'en_route' ? `${record.responder_name ?? 'Your responder'} is en route to your location. Keep your phone available.` : 'The responder marked this incident resolved.';
+
+    return (
+      <section className="emergency-screen rescue-tracking-screen">
+        <div className={`tracking-hero ${record.status}`}>
+          <div className="tracking-live-dot" />
+          <span className="safe-eyebrow">LIVE RESCUE TRACKING</span>
+          <h1>{headline}</h1>
+          <p>{copy}</p>
+          <div className="tracking-request-meta">
+            <span><b>Request ID</b><strong>{record.id}</strong></span>
+            <span><b>Status</b><strong>{record.status.replace('_', ' ').toUpperCase()}</strong></span>
+            <span><b>Emergency</b><strong>{record.emergency_type.toUpperCase()}</strong></span>
+          </div>
+        </div>
+
+        {!cancelled && (
+          <div className="tracking-grid">
+            <article className="tracking-card">
+              <span className="emergency-label">RESPONSE STATUS</span>
+              <div className="tracking-timeline">
+                {TRACKING_STEPS.map((step, index) => {
+                  const done = index <= currentStepIndex;
+                  const current = index === currentStepIndex && record.status !== 'resolved';
+                  return (
+                    <div key={step.key} className={`tracking-step ${done ? 'done' : ''} ${current ? 'current' : ''}`}>
+                      <i>{done ? '✓' : ''}</i>
+                      <div><strong>{step.title}{current && <em>LIVE</em>}</strong><span>{step.detail}</span></div>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+
+            <aside className="tracking-card responder-tracking-card">
+              <span className="emergency-label">RESPONDER</span>
+              {record.responder_name ? (
+                <div className="citizen-responder-row">
+                  <div>{record.responder_name.slice(0, 2).toUpperCase()}</div>
+                  <span><strong>{record.responder_name}</strong><small>{record.status === 'en_route' ? 'Responder en route' : record.status === 'resolved' ? 'Response completed' : 'Assigned to your request'}</small></span>
+                </div>
+              ) : (
+                <div className="awaiting-responder"><div className="tracking-spinner"/><strong>Finding an available responder</strong><span>Your request is visible in the emergency queue.</span></div>
+              )}
+              <div className="tracking-location"><span>YOUR LOCATION</span><strong>{record.latitude.toFixed(5)}, {record.longitude.toFixed(5)}</strong>{record.accuracy_m != null && <small>GPS accuracy ±{Math.round(record.accuracy_m)} m</small>}</div>
+            </aside>
+          </div>
+        )}
+
+        {trackingError && <div className="emergency-error">{trackingError}</div>}
+        <div className="tracking-actions">
+          {record.status === 'submitted' && <button type="button" className="tracking-cancel" onClick={cancelRequest} disabled={cancelling}>{cancelling ? 'CANCELLING…' : 'CANCEL REQUEST'}</button>}
+          <button type="button" className="figma-secondary" onClick={onBack}>Back to overview</button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="emergency-screen">
       <button type="button" className="emergency-siren-cta" onClick={() => setFormOpen(true)} aria-expanded={formOpen}>
-        <span className="emergency-siren-icon" aria-hidden="true">✦</span>
-        <strong>I NEED HELP</strong>
-        <span>Tap to request emergency assistance</span>
+        <span className="emergency-siren-icon" aria-hidden="true">✦</span><strong>I NEED HELP</strong><span>Tap to request emergency assistance</span>
       </button>
-
-      <div className="emergency-heading">
-        <div><span className="safe-eyebrow">EMERGENCY HELP</span><h1>Request immediate assistance</h1><p>Your GPS location and the latest environmental snapshot will be attached to the request.</p></div>
-        <button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button>
-      </div>
-
-      <div className="emergency-status-summary">
-        <span><b>Location</b><strong>{position.label}</strong>{position.accuracy !== null && <small>±{Math.round(position.accuracy)} m accuracy</small>}</span>
-        <span><b>Flood Risk</b><strong className={safety?.prototype_risk_level === 'critical' ? 'risk-critical' : ''}>{safety ? `${safety.prototype_risk_score}/100 · ${safety.prototype_risk_level.toUpperCase()}` : 'Checking…'}</strong></span>
-        <span><b>Safe Destination</b><strong>Shree Secondary School</strong><small>Recommended evacuation point</small></span>
-      </div>
-
+      <div className="emergency-heading"><div><span className="safe-eyebrow">EMERGENCY HELP</span><h1>Request immediate assistance</h1><p>Your GPS location and the latest environmental snapshot will be attached to the request.</p></div><button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button></div>
+      <div className="emergency-status-summary"><span><b>Location</b><strong>{position.label}</strong>{position.accuracy !== null && <small>±{Math.round(position.accuracy)} m accuracy</small>}</span><span><b>Flood Risk</b><strong className={safety?.prototype_risk_level === 'critical' ? 'risk-critical' : ''}>{safety ? `${safety.prototype_risk_score}/100 · ${safety.prototype_risk_level.toUpperCase()}` : 'Checking…'}</strong></span><span><b>Safe Destination</b><strong>Shree Secondary School</strong><small>Recommended evacuation point</small></span></div>
       <div className={`emergency-grid ${formOpen ? 'form-open' : ''}`}>
         <div className="emergency-form-card">
           <span className="emergency-label">WHAT HELP DO YOU NEED?</span>
@@ -102,7 +185,6 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
           <button type="button" className="emergency-submit" onClick={submitEmergency} disabled={submitting}>{submitting?'SENDING REQUEST…':'SEND EMERGENCY REQUEST'}</button>
           <button type="button" className="figma-secondary emergency-back" onClick={onBack}>Cancel</button>
         </div>
-
         <aside className="emergency-context-card">
           <span className="emergency-label">ATTACHED LIVE CONTEXT</span>
           <div className="emergency-location-box"><strong>{position.label}</strong><span>{position.latitude.toFixed(5)}, {position.longitude.toFixed(5)}</span>{position.accuracy!==null&&<small>GPS accuracy ±{Math.round(position.accuracy)} m</small>}</div>
