@@ -43,6 +43,12 @@ export type EmergencyRecord = EmergencyCreate & {
   is_demo?: boolean;
 };
 
+export type EmergencyLocationUpdate = {
+  latitude: number;
+  longitude: number;
+  accuracy_m?: number | null;
+};
+
 export const citizenSafetyApi = {
   getContext(latitude: number, longitude: number): Promise<SafetyContext> {
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
@@ -59,6 +65,9 @@ export const citizenSafetyApi = {
   },
   updateEmergency(id: string, payload: { status: EmergencyStatus; responder_id?: string; responder_name?: string }): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  },
+  updateEmergencyLocation(id: string, payload: EmergencyLocationUpdate): Promise<EmergencyRecord> {
+    return apiRequest<EmergencyRecord>(`/emergencies/${id}/location`, { method: 'PATCH', body: JSON.stringify(payload) });
   },
   cancelEmergency(id: string): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}/cancel`, { method: 'POST' });
