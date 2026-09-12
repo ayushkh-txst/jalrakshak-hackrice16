@@ -141,7 +141,7 @@ export const citizenSafetyApi = {
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
     const request = apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`, undefined, 5_500)
       .then(async (route) => {
-        publishRouteAnalysis(route);
+        publishRouteAnalysis({ ...route, screening_status: 'pending', recommended_count: 0 });
         const screenedRoute = await screenEvacuationRoute(latitude, longitude, route);
         publishRouteAnalysis(screenedRoute);
         return screenedRoute;

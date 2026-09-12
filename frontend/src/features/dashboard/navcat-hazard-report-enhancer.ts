@@ -1,26 +1,14 @@
 import { citizenSafetyApi, type EvacuationRoute } from './api/citizen-safety.api';
-
-type HazardKind = 'road_blocked' | 'flooded_road' | 'debris' | 'other';
-type HazardReport = {
-  id: string;
-  kind: HazardKind;
-  label: string;
-  latitude: number;
-  longitude: number;
-  accuracy_m: number | null;
-  created_at: string;
-  source: 'user_reported';
-  image_name: string;
-  image_type: string;
-};
-
-const REPORTS_KEY = 'jalrakshak:user-hazard-reports:v1';
+import { hazardsApi, type HazardKind, type HazardReport, type HazardSubmission } from './api/hazards.api';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 let activePreviewUrl: string | null = null;
 let selectedFile: File | null = null;
 let pendingKind: HazardKind = 'road_blocked';
 let latestKnownRoute: EvacuationRoute | null = null;
+let submitting = false;
+let submissionId = '';
+let retryPayload: HazardSubmission | null = null;
 
 const labels: Record<HazardKind, string> = {
   road_blocked: 'Road blocked',
@@ -42,12 +30,13 @@ function getPosition(): Promise<GeolocationPosition | null> {
   }));
 }
 
-function saveReport(report: HazardReport) {
-  try {
-    const previous = JSON.parse(localStorage.getItem(REPORTS_KEY) ?? '[]');
-    const reports = Array.isArray(previous) ? previous : [];
-    localStorage.setItem(REPORTS_KEY, JSON.stringify([report, ...reports].slice(0, 30)));
-  } catch {}
+function encodePhoto(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(new Error('Unable to read the photo. Select it again.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function clickSidebarNav(label: string) {
@@ -94,36 +83,44 @@ function cleanupPicker() {
 }
 
 async function submitReport() {
-  if (!selectedFile) return;
+  if (!selectedFile || submitting) return;
+  submitting = true;
+  const panel = document.querySelector('.navcat-hazard-picker');
+  panel?.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(item => item.disabled = true);
   const file = selectedFile;
   const previousRoute = latestKnownRoute;
-  const position = await getPosition();
-  if (!position) {
-    appendStatus('<strong>Location needed</strong><p>I can attach the photo, but I need location permission before I can place this user-reported hazard on the map or recalculate from your position.</p>');
+  let report: HazardReport;
+  try {
+    if (!retryPayload) {
+      const kind = pendingKind;
+      const attachPhoto = panel?.querySelector<HTMLInputElement>('[data-share-hazard-photo]')?.checked;
+      const position = await getPosition();
+      if (!position) throw new Error('Allow location access to place this report at your current GPS position.');
+      retryPayload = {
+        client_request_id: submissionId, kind,
+        latitude: position.coords.latitude, longitude: position.coords.longitude,
+        accuracy_m: Number.isFinite(position.coords.accuracy) ? Math.round(position.coords.accuracy) : null,
+        ...(attachPhoto ? { photo_base64: await encodePhoto(file) } : {}),
+      };
+    }
+    report = await hazardsApi.create(retryPayload);
+  } catch (error) {
+    appendStatus(`<strong>Report not confirmed saved.</strong><p>${escapeHtml(error instanceof Error ? error.message : 'The backend is unavailable.')} Retry this submission to avoid duplicates.</p>`);
+    submitting = false;
+    panel?.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(item => item.disabled = false);
     return;
   }
-
-  const report: HazardReport = {
-    id: `USR-${Date.now().toString(36).toUpperCase()}`,
-    kind: pendingKind,
-    label: labels[pendingKind],
-    latitude: position.coords.latitude,
-    longitude: position.coords.longitude,
-    accuracy_m: Number.isFinite(position.coords.accuracy) ? Math.round(position.coords.accuracy) : null,
-    created_at: new Date().toISOString(),
-    source: 'user_reported',
-    image_name: file.name,
-    image_type: file.type,
-  };
-
-  saveReport(report);
+  cleanupPicker();
+  submitting = false;
   window.dispatchEvent(new CustomEvent('jalrakshak:user-hazard-report', { detail: report }));
-  appendStatus(`<div class="navcat-hazard-source">USER REPORTED</div><strong>${escapeHtml(report.label)} saved near your current GPS.</strong><p>I’m checking the road alternatives again. I’ll avoid routes that pass close to this report, but the report is not an official closure confirmation.</p>`);
+  appendStatus(`<div class="navcat-hazard-source">USER REPORTED · SHARED</div><strong>${escapeHtml(report.label)} saved to the backend.</strong><p>Citizen and responder route screens now use this report. ${report.has_photo ? 'The photo is available to you and responders.' : 'No photo was uploaded.'} I’m checking road alternatives; this report is not an official closure confirmation.</p>`);
 
   try {
     const route = await citizenSafetyApi.getEvacuationRoute(report.latitude, report.longitude);
     latestKnownRoute = route;
     window.dispatchEvent(new CustomEvent('jalrakshak:navcat-hazard-route', { detail: { report, route } }));
+
+    if (route.screening_status !== 'complete') throw new Error('Shared hazard screening unavailable.');
 
     if (route.screening_status === 'complete' && route.recommended_count === 0) {
       appendStatus(`<div class="navcat-hazard-source danger">NO ROUTE RECOMMENDED</div><strong>I could not find a road option that clears the current safety screen.</strong><p>${route.alternatives_considered} route${route.alternatives_considered === 1 ? '' : 's'} checked · ${route.rejected_count ?? route.alternatives_considered} rejected. I will not tell you to use a route that the current screen rejected. Open the map to review the situation or request emergency help if you cannot safely move.</p><button type="button" data-open-hazard-route>Open Live Map</button>`);
@@ -136,13 +133,14 @@ async function submitReport() {
     appendStatus(`<div class="navcat-hazard-source">${routeChanged ? 'ROUTE CHANGED' : 'ROUTE REFRESHED'}</div><strong>${routeSummary(route)}</strong><p>${routeChanged ? `Your recommended path changed after the report. ` : ''}${route.alternatives_considered} route${route.alternatives_considered === 1 ? '' : 's'} checked · ${rejected} rejected · ${viable} viable. JalRakshak is now showing the safest remaining viable option from the current prototype screen. The blockage remains USER REPORTED until verified.</p><button type="button" data-open-hazard-route>Open Live Map</button>`);
   } catch {
     appendStatus('<strong>I saved the blockage report, but live routing did not respond.</strong><p>Your report is still marked USER REPORTED. I will not claim a new route is safe until routing returns a result.</p><button type="button" data-open-hazard-route>Open Live Map</button>');
-  } finally {
-    cleanupPicker();
   }
 }
 
 function showPicker(file: File) {
+  if (submitting) return;
   cleanupPicker();
+  submissionId = crypto.randomUUID();
+  retryPayload = null;
   selectedFile = file;
   activePreviewUrl = URL.createObjectURL(file);
   const overlay = document.getElementById('jalrakshak-navcat-overlay');
@@ -155,7 +153,8 @@ function showPicker(file: File) {
     <div class="navcat-hazard-picker-copy">
       <div class="navcat-hazard-source">ATTACH TO SAFETY REPORT</div>
       <strong>What does this photo show?</strong>
-      <p>The image stays in this browser preview for now. JalRakshak stores only report metadata in this prototype.</p>
+      <p>Your current GPS and hazard type will be shared with signed-in citizens and responders. Reports stay active until a responder resolves them.</p>
+      <label><input type="checkbox" data-share-hazard-photo /> Also upload this photo for responder review (optional).</label>
       <div class="navcat-hazard-types">
         ${Object.entries(labels).map(([key, label]) => `<button type="button" data-hazard-kind="${key}" class="${key === pendingKind ? 'active' : ''}">${label}</button>`).join('')}
       </div>
@@ -165,11 +164,17 @@ function showPicker(file: File) {
   overlay.appendChild(panel);
   panel.querySelectorAll<HTMLButtonElement>('[data-hazard-kind]').forEach((button) => button.addEventListener('click', () => {
     pendingKind = (button.dataset.hazardKind as HazardKind) || 'road_blocked';
+    retryPayload = null;
+    submissionId = crypto.randomUUID();
     panel.querySelectorAll('[data-hazard-kind]').forEach((item) => item.classList.remove('active'));
     button.classList.add('active');
   }));
   panel.querySelector<HTMLButtonElement>('[data-hazard-cancel]')?.addEventListener('click', cleanupPicker);
   panel.querySelector<HTMLButtonElement>('[data-hazard-submit]')?.addEventListener('click', () => void submitReport());
+  panel.querySelector('[data-share-hazard-photo]')?.addEventListener('change', () => {
+    retryPayload = null;
+    submissionId = crypto.randomUUID();
+  });
 }
 
 function handleFile(file: File) {

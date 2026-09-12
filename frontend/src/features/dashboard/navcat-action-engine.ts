@@ -328,6 +328,14 @@ export async function runNavCatAction(input: string, context: NavCatContext): Pr
       };
     }
 
+    if (nextRoute.screening_status !== 'complete' || nextRoute.recommended_count === 0) {
+      return { intent, crisis: intent === 'route_blocked', route: nextRoute,
+        text: nextRoute.screening_status === 'complete'
+          ? 'No road alternative passed the current hazard screen. No route is recommended.'
+          : 'Shared hazard screening is unavailable. I cannot recommend a route until it can be checked.',
+        actions: [{ kind: 'open_map', label: 'Review Live Map' }] };
+    }
+
     const screening = nextRoute.screening_status === 'complete'
       ? `${nextRoute.alternatives_considered} routes analyzed · ${nextRoute.rejected_count ?? 0} rejected · ${nextRoute.viable_count ?? 0} viable.`
       : `${nextRoute.alternatives_considered} route options considered.`;

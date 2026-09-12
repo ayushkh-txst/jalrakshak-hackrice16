@@ -1,19 +1,9 @@
 import type { EvacuationRoute, ScreenedRoute } from './citizen-safety.api';
+import { hazardsApi, type HazardReport as UserHazardReport } from './hazards.api';
 
 type LatLon = [number, number];
 type HazardSeverity = 'high' | 'critical';
 type HazardPolygon = { id: string; severity: HazardSeverity; label: string; points: LatLon[] };
-type UserHazardKind = 'road_blocked' | 'flooded_road' | 'debris' | 'other';
-type UserHazardReport = {
-  id: string;
-  kind: UserHazardKind;
-  label: string;
-  latitude: number;
-  longitude: number;
-  accuracy_m?: number | null;
-  created_at: string;
-  source: 'user_reported';
-};
 type OsrmStep = {
   distance: number;
   duration: number;
@@ -31,8 +21,6 @@ type CandidateResult = ScreenedRoute & { routeSteps: EvacuationRoute['steps'] };
 
 const TEXAS_DEMO_CENTER: LatLon = [29.7604, -95.3698];
 const MAX_SCREENING_MS = 2600;
-const USER_REPORTS_KEY = 'jalrakshak:user-hazard-reports:v1';
-const USER_REPORT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 // Prototype Houston-area hazard polygons for the hackathon demo. These are explicitly
 // modeled demo zones, not official flood-depth or road-closure data.
@@ -54,20 +42,7 @@ const DEMO_HAZARDS: HazardPolygon[] = [
 const nearTexasDemo = (lat: number, lon: number) => Math.abs(lat - TEXAS_DEMO_CENTER[0]) < 1.2 && Math.abs(lon - TEXAS_DEMO_CENTER[1]) < 1.2;
 
 export function loadRecentUserHazards(): UserHazardReport[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = JSON.parse(localStorage.getItem(USER_REPORTS_KEY) ?? '[]');
-    if (!Array.isArray(raw)) return [];
-    const cutoff = Date.now() - USER_REPORT_MAX_AGE_MS;
-    return raw.filter((item: any): item is UserHazardReport => {
-      if (!item || item.source !== 'user_reported') return false;
-      if (!Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)) return false;
-      const created = Date.parse(item.created_at ?? '');
-      return Number.isFinite(created) && created >= cutoff;
-    });
-  } catch {
-    return [];
-  }
+  return hazardsApi.snapshot().reports;
 }
 
 function pointInPolygon(point: LatLon, polygon: LatLon[]): boolean {
@@ -129,7 +104,17 @@ function reportRadiusMeters(report: UserHazardReport): number {
 function routeNearUserReport(route: LatLon[], report: UserHazardReport): boolean {
   const point: LatLon = [report.latitude, report.longitude];
   const radius = reportRadiusMeters(report);
-  return route.some(routePoint => distanceMeters(routePoint, point) <= radius);
+  if (route.some(routePoint => distanceMeters(routePoint, point) <= radius)) return true;
+  // Screen the segments too: a blockage may fall between sparse OSRM vertices.
+  const scale = Math.cos(point[0] * Math.PI / 180);
+  const project = ([lat, lon]: LatLon) => [(lon - point[1]) * 111_195 * scale, (lat - point[0]) * 111_195];
+  for (let i = 1; i < route.length; i++) {
+    const [ax, ay] = project(route[i - 1]), [bx, by] = project(route[i]);
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+    if (Math.hypot(ax + t * dx, ay + t * dy) <= radius) return true;
+  }
+  return false;
 }
 
 async function fetchAlternatives(originLat: number, originLon: number, route: EvacuationRoute): Promise<OsrmRoute[]> {
@@ -187,10 +172,11 @@ function screenCandidate(route: OsrmRoute, hazards: HazardPolygon[], userReports
 
 export async function screenEvacuationRoute(originLat: number, originLon: number, route: EvacuationRoute): Promise<EvacuationRoute> {
   try {
-    const osrmRoutes = await fetchAlternatives(originLat, originLon, route);
-    if (!osrmRoutes.length) return route;
+    const [osrmRoutes, userReports] = await Promise.all([
+      fetchAlternatives(originLat, originLon, route), hazardsApi.refresh(),
+    ]);
+    if (!osrmRoutes.length) throw new Error('No road alternatives available.');
     const hazards = nearTexasDemo(originLat, originLon) ? DEMO_HAZARDS : [];
-    const userReports = loadRecentUserHazards();
     const screened = osrmRoutes.map((candidate, index) => screenCandidate(candidate, hazards, userReports, index));
     const viable = screened.filter(candidate => candidate.status === 'viable');
     const rejected = screened.filter(candidate => candidate.status === 'rejected');
@@ -206,8 +192,8 @@ export async function screenEvacuationRoute(originLat: number, originLon: number
     }
 
     const userReportReason = userReports.length
-      ? `Also screened against ${userReports.length} recent user-reported hazard${userReports.length === 1 ? '' : 's'} from the last 6 hours. These reports are unverified and are used conservatively to avoid nearby road segments.`
-      : 'No recent user-reported road hazards are stored on this device.';
+      ? `Also screened against ${userReports.length} active backend hazard report${userReports.length === 1 ? '' : 's'}. These reports are unverified and are used conservatively to avoid nearby road segments until a responder resolves them.`
+      : 'The shared backend returned no active user-reported hazards.';
 
     if (!recommended) {
       return { ...route, alternatives_considered: screened.length, rejected_count: rejected.length, viable_count: 0, recommended_count: 0, screening_status: 'complete', screened_routes: screened, reasons: [...route.reasons, `All ${screened.length} available road alternatives were rejected by the current prototype safety screen.`, userReportReason], warning: 'No route is currently recommended. User reports are not official closures, and modeled hazards are prototype data. Do not claim a road is safe when every candidate is rejected.' };
@@ -240,6 +226,7 @@ export async function screenEvacuationRoute(originLat: number, originLon: number
           : 'Road alternatives are real OSRM routes, but no official flood/closure geometry is configured for this location. Screening therefore cannot claim a road is flood-safe.',
     };
   } catch {
-    return { ...route, screening_status: route.screening_status ?? 'pending' };
+    return { ...route, screening_status: 'pending', recommended_count: 0, viable_count: 0,
+      screened_routes: [], warning: 'Shared hazards or road routing are unavailable. No route is currently recommended; retry screening before travel.' };
   }
 }

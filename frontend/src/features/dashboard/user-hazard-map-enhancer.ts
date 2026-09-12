@@ -1,14 +1,5 @@
-type HazardKind = 'road_blocked' | 'flooded_road' | 'debris' | 'other';
-type UserHazardReport = {
-  id: string;
-  kind: HazardKind;
-  label: string;
-  latitude: number;
-  longitude: number;
-  accuracy_m?: number | null;
-  created_at: string;
-  source: 'user_reported';
-};
+import { hazardsApi, type HazardKind, type HazardReport as UserHazardReport } from './api/hazards.api';
+import { authSession } from '../auth/auth-session';
 
 type LeafletLike = {
   map: (...args: any[]) => any;
@@ -16,33 +7,22 @@ type LeafletLike = {
   marker: (...args: any[]) => any;
   circle: (...args: any[]) => any;
   divIcon: (...args: any[]) => any;
+  control?: (...args: any[]) => any;
 };
 
-const REPORTS_KEY = 'jalrakshak:user-hazard-reports:v1';
-const MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const PATCH_FLAG = '__jalrakshakUserHazardPatched';
 const maps = new Set<any>();
 const reportLayers = new WeakMap<any, any>();
 let installTimer: number | null = null;
+let unsubscribe: (() => void) | null = null;
+const feedLabels = new WeakMap<any, HTMLElement>();
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
 }
 
 function readReports(): UserHazardReport[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(REPORTS_KEY) ?? '[]');
-    if (!Array.isArray(raw)) return [];
-    const cutoff = Date.now() - MAX_AGE_MS;
-    return raw.filter((item: any): item is UserHazardReport => {
-      if (!item || item.source !== 'user_reported') return false;
-      if (!Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)) return false;
-      const created = Date.parse(item.created_at ?? '');
-      return Number.isFinite(created) && created >= cutoff;
-    });
-  } catch {
-    return [];
-  }
+  return hazardsApi.snapshot().reports;
 }
 
 function ageLabel(value: string) {
@@ -69,6 +49,23 @@ function reportRadius(report: UserHazardReport) {
 
 function renderReportsOnMap(map: any, L: LeafletLike) {
   if (!map || !L?.layerGroup) return;
+  const state = hazardsApi.snapshot();
+  let label = feedLabels.get(map);
+  if (!label && L.control) {
+    const control = L.control({ position: 'bottomleft' });
+    label = document.createElement('div');
+    label.style.cssText = 'background:#fffdf8;padding:6px 10px;border:1px solid #e4d9c6;border-radius:6px;font-size:11px;max-width:260px;';
+    control.onAdd = () => label;
+    control.addTo(map);
+    feedLabels.set(map, label);
+  }
+  if (label) label.textContent = state.error ? 'Shared hazards unavailable · markers may be out of date'
+    : state.checkedAt ? `Shared hazards · ${state.reports.length} active · checked ${new Date(state.checkedAt).toLocaleTimeString()}`
+    : 'Loading shared hazards…';
+  // Keep an open popup usable across unchanged polling responses.
+  const revision = JSON.stringify(state.reports.map(report => [report.id, report.updated_at]));
+  if (map.__jalrakshakHazardRevision === revision) return;
+  map.__jalrakshakHazardRevision = revision;
   const old = reportLayers.get(map);
   if (old) {
     try { map.removeLayer(old); } catch {}
@@ -97,7 +94,8 @@ function renderReportsOnMap(map: any, L: LeafletLike) {
       dashArray: '6 6',
       interactive: false,
     }).addTo(group);
-    marker.bindPopup(`
+    const popup = document.createElement('div');
+    popup.innerHTML = `
       <div class="user-hazard-popup">
         <strong>USER REPORTED</strong>
         <b>${escapeHtml(report.label)}</b>
@@ -105,7 +103,33 @@ function renderReportsOnMap(map: any, L: LeafletLike) {
         <span>${escapeHtml(accuracy)}</span>
         <small>Unverified report. JalRakshak uses it conservatively during prototype route screening.</small>
       </div>
-    `);
+    `;
+    if (authSession.get()?.user.role === 'worker') {
+      const resolve = document.createElement('button');
+      resolve.type = 'button';
+      resolve.textContent = 'Mark resolved';
+      resolve.addEventListener('click', async () => {
+        resolve.disabled = true;
+        try { await hazardsApi.setStatus(report.id, 'resolved'); }
+        catch (error) { resolve.disabled = false; resolve.textContent = error instanceof Error ? error.message : 'Resolution failed. Retry.'; }
+      });
+      popup.append(resolve);
+      if (report.has_photo) {
+        const photo = document.createElement('button');
+        photo.type = 'button'; photo.textContent = 'View report photo';
+        photo.addEventListener('click', async () => {
+          photo.disabled = true;
+          try {
+            const result = await hazardsApi.photo(report.id);
+            const image = document.createElement('img');
+            image.src = result.data_url; image.alt = 'Unverified hazard report'; image.style.maxWidth = '220px';
+            popup.append(image); photo.remove();
+          } catch (error) { photo.disabled = false; photo.textContent = error instanceof Error ? error.message : 'Photo unavailable.'; }
+        });
+        popup.append(photo);
+      }
+    }
+    marker.bindPopup(popup);
   }
 }
 
@@ -124,11 +148,14 @@ function patchLeaflet() {
   L.map = (...args: any[]) => {
     const map = originalMap(...args);
     maps.add(map);
+    if (!unsubscribe) unsubscribe = hazardsApi.subscribe(refreshAllMaps);
     const originalRemove = typeof map.remove === 'function' ? map.remove.bind(map) : null;
     if (originalRemove) {
       map.remove = (...removeArgs: any[]) => {
         maps.delete(map);
         reportLayers.delete(map);
+        feedLabels.delete(map);
+        if (!maps.size) { unsubscribe?.(); unsubscribe = null; }
         return originalRemove(...removeArgs);
       };
     }
@@ -154,9 +181,6 @@ function install() {
     installTimer = null;
   }
 }
-
-window.addEventListener('jalrakshak:user-hazard-report', refreshAllMaps);
-window.addEventListener('storage', (event) => { if (event.key === REPORTS_KEY) refreshAllMaps(); });
 
 const observer = new MutationObserver(install);
 observer.observe(document.documentElement, { childList: true, subtree: true });
