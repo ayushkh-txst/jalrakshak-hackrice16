@@ -74,7 +74,7 @@ async function refreshContext() {
     }
   }
   try {
-    const records = await citizenSafetyApi.listEmerencies?.() ?? await citizenSafetyApi.listEmergencies();
+    const records = await citizenSafetyApi.listEmergencies();
     latestEmergency = records
       .filter((item) => !item.is_demo && item.status !== 'cancelled')
       .sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at))[0] ?? null;
