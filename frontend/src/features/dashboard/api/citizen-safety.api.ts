@@ -16,7 +16,7 @@ export type SafetyContext = {
 };
 
 export type EmergencyType = 'rescue' | 'medical' | 'evacuation';
-export type EmergencyStatus = 'submitted' | 'assigned' | 'en_route' | 'resolved';
+export type EmergencyStatus = 'submitted' | 'assigned' | 'en_route' | 'resolved' | 'cancelled';
 
 export type EmergencyCreate = {
   citizen_id: string;
@@ -51,10 +51,16 @@ export const citizenSafetyApi = {
   createEmergency(payload: EmergencyCreate): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>('/emergencies', { method: 'POST', body: JSON.stringify(payload) });
   },
+  getEmergency(id: string): Promise<EmergencyRecord> {
+    return apiRequest<EmergencyRecord>(`/emergencies/${id}`);
+  },
   listEmergencies(): Promise<EmergencyRecord[]> {
     return apiRequest<EmergencyRecord[]>('/emergencies');
   },
   updateEmergency(id: string, payload: { status: EmergencyStatus; responder_id?: string; responder_name?: string }): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  },
+  cancelEmergency(id: string): Promise<EmergencyRecord> {
+    return apiRequest<EmergencyRecord>(`/emergencies/${id}/cancel`, { method: 'POST' });
   },
 };
