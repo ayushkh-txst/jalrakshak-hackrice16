@@ -49,10 +49,36 @@ export type EmergencyLocationUpdate = {
   accuracy_m?: number | null;
 };
 
+export type EvacuationRouteStep = {
+  instruction: string;
+  distance_m: number;
+  duration_s: number;
+};
+
+export type EvacuationRoute = {
+  destination_name: string;
+  destination_type: string;
+  destination_latitude: number;
+  destination_longitude: number;
+  distance_m: number;
+  duration_s: number;
+  geometry: number[][];
+  steps: EvacuationRouteStep[];
+  alternatives_considered: number;
+  prototype_safety_score: number;
+  reasons: string[];
+  source: string;
+  warning: string;
+};
+
 export const citizenSafetyApi = {
   getContext(latitude: number, longitude: number): Promise<SafetyContext> {
     const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
     return apiRequest<SafetyContext>(`/safety/context?${params.toString()}`);
+  },
+  getEvacuationRoute(latitude: number, longitude: number): Promise<EvacuationRoute> {
+    const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
+    return apiRequest<EvacuationRoute>(`/routing/evacuation?${params.toString()}`);
   },
   createEmergency(payload: EmergencyCreate): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>('/emergencies', { method: 'POST', body: JSON.stringify(payload) });
