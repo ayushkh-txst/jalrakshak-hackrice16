@@ -29,29 +29,31 @@ type OsrmRoute = {
 
 type CandidateResult = ScreenedRoute & { routeSteps: EvacuationRoute['steps'] };
 
-const NEPAL_DEMO_CENTER: LatLon = [27.9516, 85.6846];
+const TEXAS_DEMO_CENTER: LatLon = [29.7604, -95.3698];
 const MAX_SCREENING_MS = 2600;
 const USER_REPORTS_KEY = 'jalrakshak:user-hazard-reports:v1';
 const USER_REPORT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
+// Prototype Houston-area hazard polygons for the hackathon demo. These are explicitly
+// modeled demo zones, not official flood-depth or road-closure data.
 const DEMO_HAZARDS: HazardPolygon[] = [
   {
-    id: 'critical-demo-1',
+    id: 'houston-critical-buffalo-bayou',
     severity: 'critical',
-    label: 'Critical modeled flood zone',
-    points: [[27.9462,85.6740],[27.9530,85.6748],[27.9552,85.6804],[27.9526,85.6840],[27.9474,85.6830],[27.9448,85.6780]],
+    label: 'Modeled Buffalo Bayou flood zone',
+    points: [[29.7588,-95.4050],[29.7685,-95.3970],[29.7698,-95.3770],[29.7620,-95.3655],[29.7535,-95.3760],[29.7520,-95.3940]],
   },
   {
-    id: 'high-demo-1',
+    id: 'houston-high-brays-bayou',
     severity: 'high',
-    label: 'High modeled flood-risk zone',
-    points: [[27.9550,85.6892],[27.9615,85.6900],[27.9630,85.6992],[27.9583,85.7020],[27.9535,85.6960]],
+    label: 'Modeled Brays Bayou high-risk zone',
+    points: [[29.7105,-95.4250],[29.7215,-95.4170],[29.7240,-95.3920],[29.7165,-95.3760],[29.7050,-95.3890],[29.7035,-95.4100]],
   },
 ];
 
-const nearNepalDemo = (lat: number, lon: number) => Math.abs(lat - NEPAL_DEMO_CENTER[0]) < 0.5 && Math.abs(lon - NEPAL_DEMO_CENTER[1]) < 0.5;
+const nearTexasDemo = (lat: number, lon: number) => Math.abs(lat - TEXAS_DEMO_CENTER[0]) < 1.2 && Math.abs(lon - TEXAS_DEMO_CENTER[1]) < 1.2;
 
-function loadRecentUserHazards(): UserHazardReport[] {
+export function loadRecentUserHazards(): UserHazardReport[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = JSON.parse(localStorage.getItem(USER_REPORTS_KEY) ?? '[]');
@@ -161,54 +163,35 @@ function instructionForStep(step: OsrmStep, index: number): string {
 
 function routeSteps(route: OsrmRoute): EvacuationRoute['steps'] {
   const steps = route.legs?.flatMap(leg => leg.steps ?? []) ?? [];
-  return steps
-    .filter(step => step.distance > 1 || step.duration > 1)
-    .map((step, index) => ({
-      instruction: instructionForStep(step, index),
-      distance_m: step.distance,
-      duration_s: step.duration,
-    }));
+  return steps.filter(step => step.distance > 1 || step.duration > 1).map((step, index) => ({
+    instruction: instructionForStep(step, index), distance_m: step.distance, duration_s: step.duration,
+  }));
 }
 
 function screenCandidate(route: OsrmRoute, hazards: HazardPolygon[], userReports: UserHazardReport[], index: number): CandidateResult {
   const geometry = geometryToLatLon(route);
   const rejectionReasons: string[] = [];
   let highRiskTouches = 0;
-
   for (const hazard of hazards) {
     if (!routeIntersectsPolygon(geometry, hazard.points)) continue;
     if (hazard.severity === 'critical') rejectionReasons.push(`Crosses ${hazard.label.toLowerCase()}`);
     else highRiskTouches += 1;
   }
-
   for (const report of userReports) {
-    if (!routeNearUserReport(geometry, report)) continue;
-    rejectionReasons.push(`Passes near user-reported ${report.label.toLowerCase()} (${report.id})`);
+    if (routeNearUserReport(geometry, report)) rejectionReasons.push(`Passes near user-reported ${report.label.toLowerCase()} (${report.id})`);
   }
-
   const status: ScreenedRoute['status'] = rejectionReasons.length ? 'rejected' : 'viable';
   const safetyPenalty = rejectionReasons.length * 70 + highRiskTouches * 18;
-  return {
-    id: `candidate-${index + 1}`,
-    status,
-    distance_m: route.distance,
-    duration_s: route.duration,
-    prototype_safety_score: Math.max(5, 100 - safetyPenalty),
-    rejection_reasons: rejectionReasons,
-    geometry,
-    routeSteps: routeSteps(route),
-  };
+  return { id: `candidate-${index + 1}`, status, distance_m: route.distance, duration_s: route.duration, prototype_safety_score: Math.max(5, 100 - safetyPenalty), rejection_reasons: rejectionReasons, geometry, routeSteps: routeSteps(route) };
 }
 
 export async function screenEvacuationRoute(originLat: number, originLon: number, route: EvacuationRoute): Promise<EvacuationRoute> {
   try {
     const osrmRoutes = await fetchAlternatives(originLat, originLon, route);
     if (!osrmRoutes.length) return route;
-
-    const hazards = nearNepalDemo(originLat, originLon) ? DEMO_HAZARDS : [];
+    const hazards = nearTexasDemo(originLat, originLon) ? DEMO_HAZARDS : [];
     const userReports = loadRecentUserHazards();
     const screened = osrmRoutes.map((candidate, index) => screenCandidate(candidate, hazards, userReports, index));
-
     const viable = screened.filter(candidate => candidate.status === 'viable');
     const rejected = screened.filter(candidate => candidate.status === 'rejected');
 
@@ -227,21 +210,7 @@ export async function screenEvacuationRoute(originLat: number, originLon: number
       : 'No recent user-reported road hazards are stored on this device.';
 
     if (!recommended) {
-      return {
-        ...route,
-        alternatives_considered: screened.length,
-        rejected_count: rejected.length,
-        viable_count: 0,
-        recommended_count: 0,
-        screening_status: 'complete',
-        screened_routes: screened,
-        reasons: [
-          ...route.reasons,
-          `All ${screened.length} available road alternatives were rejected by the current prototype safety screen.`,
-          userReportReason,
-        ],
-        warning: 'No route is currently recommended. User reports are not official closures, and modeled hazards are prototype data. Do not claim a road is safe when every candidate is rejected.',
-      };
+      return { ...route, alternatives_considered: screened.length, rejected_count: rejected.length, viable_count: 0, recommended_count: 0, screening_status: 'complete', screened_routes: screened, reasons: [...route.reasons, `All ${screened.length} available road alternatives were rejected by the current prototype safety screen.`, userReportReason], warning: 'No route is currently recommended. User reports are not official closures, and modeled hazards are prototype data. Do not claim a road is safe when every candidate is rejected.' };
     }
 
     const recommendedSteps = recommended.routeSteps.length ? recommended.routeSteps : route.steps;
@@ -260,24 +229,17 @@ export async function screenEvacuationRoute(originLat: number, originLon: number
       screened_routes: screened,
       reasons: [
         ...route.reasons,
-        hazards.length
-          ? `Screened ${screened.length} road alternatives against configured modeled hazard polygons.`
-          : `Screened ${screened.length} real road alternatives for the current location.`,
+        hazards.length ? `Screened ${screened.length} road alternatives against Houston-area modeled hazard polygons.` : `Screened ${screened.length} real road alternatives for the current location.`,
         userReportReason,
-        rejected.length
-          ? `${rejected.length} route${rejected.length === 1 ? ' was' : 's were'} rejected; the safest remaining viable alternative is now the recommended route.`
-          : 'No candidate route intersected the currently configured hazard exclusions.',
+        rejected.length ? `${rejected.length} route${rejected.length === 1 ? ' was' : 's were'} rejected; the safest remaining viable alternative is now the recommended route.` : 'No candidate route intersected the currently configured hazard exclusions.',
       ],
       warning: userReports.length
         ? 'Route screening includes recent user-reported hazards. Those reports are not official road-closure confirmations, so the route remains a prototype safety recommendation.'
         : hazards.length
-          ? 'Route rejection uses modeled prototype hazard polygons and should not be treated as an official road-closure or flood-depth determination.'
+          ? 'Route rejection uses modeled Houston-area prototype hazard polygons and should not be treated as an official road-closure or flood-depth determination.'
           : 'Road alternatives are real OSRM routes, but no official flood/closure geometry is configured for this location. Screening therefore cannot claim a road is flood-safe.',
     };
   } catch {
-    return {
-      ...route,
-      screening_status: route.screening_status ?? 'pending',
-    };
+    return { ...route, screening_status: route.screening_status ?? 'pending' };
   }
 }
