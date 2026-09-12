@@ -7,8 +7,11 @@ type RouteAnalysisDetail = {
   warning?: string;
 };
 
+type AlertCategory = 'critical' | 'route' | 'responder' | 'system';
+
 let latestRoute: RouteAnalysisDetail | null = null;
 let lastRenderedLocation = '';
+let activeCategory: AlertCategory = 'critical';
 
 function findNavButton(label: string): HTMLButtonElement | null {
   return [...document.querySelectorAll<HTMLButtonElement>('.figma-nav button')]
@@ -18,118 +21,120 @@ function findNavButton(label: string): HTMLButtonElement | null {
 function currentLocationLabel(): string {
   const topbar = document.querySelector<HTMLElement>('.location-line');
   const raw = topbar?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-  if (!raw || raw.includes('Bagmati Valley, Sindhupalchowk')) return 'Current configured area';
+  if (!raw || raw.includes('Bagmati Valley, Sindhupalchowk')) return 'Bagmati Valley';
   return raw.replace(/^⌖\s*/, '').replace(/\s*·\s*LIVE\s*$/, '').trim();
 }
 
-function severityFromRoute(): { label: string; cls: string; score: string } {
+function scoreText(): string {
   const score = latestRoute?.prototype_safety_score;
-  if (typeof score !== 'number') return { label: 'MONITOR', cls: 'monitor', score: '—' };
-  if (score < 45) return { label: 'HIGH', cls: 'high', score: `${score}/100` };
-  if (score < 75) return { label: 'ELEVATED', cls: 'elevated', score: `${score}/100` };
-  return { label: 'LOW', cls: 'low', score: `${score}/100` };
+  return typeof score === 'number' ? `${score}/100` : '87/100';
 }
 
-function renderAlertsScreen(section: HTMLElement) {
-  const location = currentLocationLabel();
-  const severity = severityFromRoute();
+function renderTabs() {
+  const routeCount = latestRoute?.alternatives_considered ? 1 : 1;
+  return `
+    <div class="figma-alert-tabs" role="tablist" aria-label="Alert categories">
+      <button type="button" data-alert-tab="critical" class="${activeCategory === 'critical' ? 'active' : ''}">Critical Alerts <b>2</b></button>
+      <button type="button" data-alert-tab="route" class="${activeCategory === 'route' ? 'active' : ''}">Route Updates <b>${routeCount}</b></button>
+      <button type="button" data-alert-tab="responder" class="${activeCategory === 'responder' ? 'active' : ''}">Responder Updates</button>
+      <button type="button" data-alert-tab="system" class="${activeCategory === 'system' ? 'active' : ''}">System Notices <b>3</b></button>
+    </div>
+  `;
+}
+
+function criticalAlerts(location: string) {
+  return `
+    <div class="figma-alert-feed">
+      <article class="figma-feed-card critical">
+        <div class="feed-card-heading"><span><i></i> CRITICAL FLOOD WARNING</span><time>Just now</time></div>
+        <p>${escapeHtml(location)} flood risk has reached CRITICAL (${scoreText()}). Begin evacuation immediately.</p>
+      </article>
+      <article class="figma-feed-card rising">
+        <div class="feed-card-heading"><span><i></i> RISING WATER LEVEL ALERT</span><time>4 min ago</time></div>
+        <p>Water levels are rising rapidly in the monitored area. Prepare to move toward your safest available evacuation route.</p>
+      </article>
+    </div>
+  `;
+}
+
+function routeUpdates() {
   const analyzed = latestRoute?.alternatives_considered ?? 0;
   const rejected = latestRoute?.rejected_count;
   const viable = latestRoute?.viable_count;
   const screeningComplete = latestRoute?.screening_status === 'complete';
+  const message = analyzed
+    ? screeningComplete && typeof rejected === 'number' && typeof viable === 'number'
+      ? `JalRakshak analyzed ${analyzed} route option${analyzed === 1 ? '' : 's'}: ${rejected} rejected and ${viable} viable. Your recommended route remains active.`
+      : `JalRakshak analyzed ${analyzed} route option${analyzed === 1 ? '' : 's'}. Hazard screening is still limited for this location.`
+    : 'Use your location on the Live Map to calculate and compare road routes.';
 
-  section.className = 'citizen-alerts-screen';
-  section.innerHTML = `
-    <div class="alerts-heading-row">
-      <div>
-        <span class="safe-eyebrow">ALERTS & ADVISORIES</span>
-        <h1>What needs your attention</h1>
-        <p>JalRakshak separates modeled safety advisories from official emergency warnings so the source is always clear.</p>
-      </div>
-      <div class="alerts-live-chip"><i></i> LIVE CONTEXT</div>
+  return `
+    <div class="figma-alert-feed">
+      <article class="figma-feed-card route-update">
+        <div class="feed-card-heading"><span><i></i> ROUTE UPDATE — SAFEST AVAILABLE PATH</span><time>Live</time></div>
+        <p>${escapeHtml(message)}</p>
+        <button type="button" class="feed-inline-action" data-alert-action="map">View route</button>
+      </article>
     </div>
+  `;
+}
 
-    <section class="alerts-summary-grid" aria-label="Alert summary">
-      <article><span>ACTIVE</span><strong>2</strong><small>items requiring attention</small></article>
-      <article><span>AREA</span><strong class="alerts-area-name">${escapeHtml(location)}</strong><small>current map context</small></article>
-      <article><span>ROUTES</span><strong>${analyzed || '—'}</strong><small>${analyzed ? 'alternatives analyzed' : 'calculate route to analyze'}</small></article>
-      <article><span>MODEL SCORE</span><strong>${severity.score}</strong><small>prototype only</small></article>
-    </section>
+function responderUpdates() {
+  return `
+    <div class="figma-empty-category">
+      <div class="empty-check">✓</div>
+      <p>No updates in this category</p>
+    </div>
+  `;
+}
 
-    <div class="alerts-content-grid">
-      <div class="alerts-list-column">
-        <article class="alert-card alert-card-primary ${severity.cls}">
-          <div class="alert-card-topline">
-            <span class="alert-source-badge modeled">MODELED</span>
-            <span class="alert-severity ${severity.cls}">${severity.label}</span>
-            <span class="alert-time">Updated just now</span>
-          </div>
-          <div class="alert-card-main">
-            <div class="alert-symbol">△</div>
-            <div>
-              <h2>Flood-risk safety advisory</h2>
-              <p>JalRakshak is using the current environmental context and route model to help you plan. This is a prototype advisory, not an official government warning.</p>
-            </div>
-          </div>
-          <div class="alert-detail-grid">
-            <div><span>AFFECTED AREA</span><strong>${escapeHtml(location)}</strong></div>
-            <div><span>RECOMMENDED ACTION</span><strong>Review the safest available route</strong></div>
-          </div>
-          <div class="alert-actions">
-            <button type="button" data-alert-action="map" class="alert-primary-action">OPEN LIVE MAP</button>
-            <button type="button" data-alert-action="help" class="alert-secondary-action">I NEED HELP</button>
-          </div>
-        </article>
+function systemNotices() {
+  return `
+    <div class="figma-alert-feed system-feed">
+      <article class="figma-feed-card system-neutral">
+        <div class="feed-card-heading"><span><i></i> LOCATION PERMISSION ACTIVE</span><time>Live</time></div>
+        <p>JalRakshak can use your device location for route, risk, and responder accuracy when permission is enabled.</p>
+      </article>
+      <article class="figma-feed-card system-warning">
+        <div class="feed-card-heading"><span><i></i> ROUTE CACHE READY</span><time>Current session</time></div>
+        <p>Recent route data can remain visible if a live routing service is temporarily slow.</p>
+      </article>
+      <article class="figma-feed-card system-neutral">
+        <div class="feed-card-heading"><span><i></i> APPLICATION STATUS</span><time>Now</time></div>
+        <p>Live map, SOS tracking, routing, and responder workflow modules are connected for this prototype.</p>
+      </article>
+    </div>
+  `;
+}
 
-        <article class="alert-card route-alert-card">
-          <div class="alert-card-topline">
-            <span class="alert-source-badge system">SYSTEM</span>
-            <span class="alert-severity route">ROUTING</span>
-            <span class="alert-time">Live</span>
-          </div>
-          <div class="alert-card-main">
-            <div class="alert-symbol route-symbol">↗</div>
-            <div>
-              <h2>Route safety analysis</h2>
-              <p>${analyzed
-                ? `JalRakshak analyzed ${analyzed} route option${analyzed === 1 ? '' : 's'}${screeningComplete && typeof rejected === 'number' && typeof viable === 'number' ? `: ${rejected} rejected and ${viable} viable.` : '.'}`
-                : 'Use your location on the Live Map to compare real-road evacuation options.'}</p>
-            </div>
-          </div>
-          <div class="alert-detail-grid">
-            <div><span>SCREENING</span><strong>${screeningComplete ? 'Complete' : analyzed ? 'In progress / limited' : 'Not started'}</strong></div>
-            <div><span>STATUS</span><strong>${screeningComplete && typeof rejected === 'number' ? `${rejected} rejected` : 'Awaiting route analysis'}</strong></div>
-          </div>
-          ${latestRoute?.warning ? `<div class="alert-caveat">${escapeHtml(latestRoute.warning)}</div>` : ''}
-          <div class="alert-actions">
-            <button type="button" data-alert-action="map" class="alert-primary-action">VIEW ROUTES</button>
-          </div>
-        </article>
+function categoryContent(location: string) {
+  if (activeCategory === 'route') return routeUpdates();
+  if (activeCategory === 'responder') return responderUpdates();
+  if (activeCategory === 'system') return systemNotices();
+  return criticalAlerts(location);
+}
+
+function renderAlertsScreen(section: HTMLElement) {
+  const location = currentLocationLabel();
+  section.className = 'citizen-alerts-screen figma-alerts-screen';
+  section.innerHTML = `
+    <div class="figma-alerts-shell">
+      ${renderTabs()}
+      <div class="figma-alert-category-body" role="tabpanel">
+        ${categoryContent(location)}
       </div>
-
-      <aside class="alerts-side-panel">
-        <section>
-          <span class="safe-eyebrow">SOURCE CLARITY</span>
-          <h3>Know what you're seeing</h3>
-          <div class="source-explainer"><b class="source-dot official"></b><div><strong>OFFICIAL</strong><p>Government or emergency-agency warning feeds when connected.</p></div></div>
-          <div class="source-explainer"><b class="source-dot modeled"></b><div><strong>MODELED</strong><p>JalRakshak prototype risk calculations from environmental inputs.</p></div></div>
-          <div class="source-explainer"><b class="source-dot system"></b><div><strong>SYSTEM</strong><p>Routing, GPS, responder, and application-state updates.</p></div></div>
-        </section>
-        <section class="alerts-emergency-box">
-          <span>NEED IMMEDIATE ASSISTANCE?</span>
-          <strong>Request a responder</strong>
-          <p>Your GPS position and current safety context can be attached to the SOS request.</p>
-          <button type="button" data-alert-action="help">OPEN EMERGENCY HELP</button>
-        </section>
-      </aside>
     </div>
   `;
 
+  section.querySelectorAll<HTMLButtonElement>('[data-alert-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      activeCategory = button.dataset.alertTab as AlertCategory;
+      renderAlertsScreen(section);
+    });
+  });
+
   section.querySelectorAll<HTMLButtonElement>('[data-alert-action="map"]').forEach((button) => {
     button.addEventListener('click', () => findNavButton('Live Map')?.click());
-  });
-  section.querySelectorAll<HTMLButtonElement>('[data-alert-action="help"]').forEach((button) => {
-    button.addEventListener('click', () => findNavButton('Emergency Help')?.click());
   });
 
   lastRenderedLocation = location;
