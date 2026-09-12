@@ -43,10 +43,24 @@ export type EmergencyRecord = EmergencyCreate & {
   responder_name?: string | null;
   is_demo?: boolean;
   navigation_status?: 'assigned' | 'en_route' | 'approaching' | 'on_scene' | 'resolved' | null;
+  responder_latitude?: number | null;
+  responder_longitude?: number | null;
+  recommended_route?: Record<string, unknown> | null;
   responder_eta_seconds?: number | null;
   responder_distance_m?: number | null;
   eta_updated_at?: string | null;
   route_updated_at?: string | null;
+  reroute_reason?: string | null;
+};
+
+export type EmergencyNavigationUpdate = {
+  responder_latitude: number;
+  responder_longitude: number;
+  recommended_route?: Record<string, unknown> | null;
+  responder_eta_seconds?: number | null;
+  responder_distance_m?: number | null;
+  navigation_status: 'assigned' | 'en_route' | 'approaching' | 'on_scene' | 'resolved';
+  reroute_reason?: string | null;
 };
 
 export type EmergencyLocationUpdate = {
@@ -150,6 +164,9 @@ export const citizenSafetyApi = {
   },
   updateEmergencyLocation(id: string, payload: EmergencyLocationUpdate): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}/location`, { method: 'PATCH', body: JSON.stringify(payload) });
+  },
+  updateEmergencyNavigation(id: string, payload: EmergencyNavigationUpdate): Promise<EmergencyRecord> {
+    return apiRequest<EmergencyRecord>(`/emergencies/${id}/navigation`, { method: 'PATCH', body: JSON.stringify(payload) });
   },
   cancelEmergency(id: string): Promise<EmergencyRecord> {
     return apiRequest<EmergencyRecord>(`/emergencies/${id}/cancel`, { method: 'POST' });
