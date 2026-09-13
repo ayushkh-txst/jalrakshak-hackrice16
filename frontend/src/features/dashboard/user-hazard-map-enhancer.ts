@@ -16,6 +16,13 @@ const reportLayers = new WeakMap<any, any>();
 let installTimer: number | null = null;
 let unsubscribe: (() => void) | null = null;
 const feedLabels = new WeakMap<any, HTMLElement>();
+const hiddenMaps = new WeakSet<any>();
+
+export function setSharedHazardsVisible(map: any, visible: boolean) {
+  if (visible) hiddenMaps.delete(map); else hiddenMaps.add(map);
+  const layer = reportLayers.get(map);
+  if (layer) { if (visible) layer.addTo(map); else map.removeLayer(layer); }
+}
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
@@ -71,7 +78,8 @@ function renderReportsOnMap(map: any, L: LeafletLike) {
     try { map.removeLayer(old); } catch {}
   }
 
-  const group = L.layerGroup().addTo(map);
+  const group = L.layerGroup();
+  if (!hiddenMaps.has(map)) group.addTo(map);
   reportLayers.set(map, group);
 
   for (const report of readReports()) {

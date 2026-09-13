@@ -170,13 +170,15 @@ function screenCandidate(route: OsrmRoute, hazards: HazardPolygon[], userReports
   return { id: `candidate-${index + 1}`, status, distance_m: route.distance, duration_s: route.duration, prototype_safety_score: Math.max(5, 100 - safetyPenalty), rejection_reasons: rejectionReasons, geometry, routeSteps: routeSteps(route) };
 }
 
-export async function screenEvacuationRoute(originLat: number, originLon: number, route: EvacuationRoute): Promise<EvacuationRoute> {
+export async function screenEvacuationRoute(originLat: number, originLon: number, route: EvacuationRoute, options: { includeDemoHazards?: boolean } = {}): Promise<EvacuationRoute> {
   try {
     const [osrmRoutes, userReports] = await Promise.all([
       fetchAlternatives(originLat, originLon, route), hazardsApi.refresh(),
     ]);
     if (!osrmRoutes.length) throw new Error('No road alternatives available.');
-    const hazards = nearTexasDemo(originLat, originLon) ? DEMO_HAZARDS : [];
+    // Live maps use shared backend reports. Demo polygons require explicit opt-in;
+    // otherwise routing would reject invisible fictional areas on the citizen map.
+    const hazards = options.includeDemoHazards && nearTexasDemo(originLat, originLon) ? DEMO_HAZARDS : [];
     const screened = osrmRoutes.map((candidate, index) => screenCandidate(candidate, hazards, userReports, index));
     const viable = screened.filter(candidate => candidate.status === 'viable');
     const rejected = screened.filter(candidate => candidate.status === 'rejected');

@@ -59,6 +59,7 @@ function rejectedRoutesHtml(routes: ScreenedRoute[]) {
 function ensureRouteAnalysisSummary() {
   const routePanel = document.querySelector<HTMLElement>('.route-panel');
   if (!routePanel) return;
+  if (routePanel.hasAttribute('data-react-route-analysis')) return;
 
   const analyzedFromDom = getAnalyzedCountFromDom();
   const analyzed = latestAnalysis?.alternatives_considered ?? analyzedFromDom;

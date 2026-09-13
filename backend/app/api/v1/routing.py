@@ -15,6 +15,7 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 CACHE_TTL_SECONDS = 90
 _route_cache: dict[str, tuple[float, "EvacuationRoute"]] = {}
+_destination_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 _http = httpx.AsyncClient(
     timeout=httpx.Timeout(5.5, connect=2.0),
@@ -90,6 +91,10 @@ def _set_cached(latitude: float, longitude: float, route: EvacuationRoute) -> No
 
 
 async def _nearby_destinations(latitude: float, longitude: float) -> list[dict[str, Any]]:
+    key = _cache_key(latitude, longitude)
+    cached = _destination_cache.get(key)
+    if cached and time.monotonic() - cached[0] < 90:
+        return cached[1]
     # Keep this query deliberately small. Overpass is the slowest dependency in the path.
     query = f"""
     [out:json][timeout:4];
@@ -104,13 +109,20 @@ async def _nearby_destinations(latitude: float, longitude: float) -> list[dict[s
 
     destinations: list[dict[str, Any]] = []
     for element in payload.get("elements", []):
-        lat = element.get("lat") or (element.get("center") or {}).get("lat")
-        lon = element.get("lon") or (element.get("center") or {}).get("lon")
+        lat = element.get("lat", (element.get("center") or {}).get("lat"))
+        lon = element.get("lon", (element.get("center") or {}).get("lon"))
         if lat is None or lon is None:
+            continue
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
             continue
         tags = element.get("tags") or {}
         destinations.append(
             {
+                "id": f"osm-{element.get('type', 'node')}-{element.get('id', len(destinations))}",
                 "latitude": float(lat),
                 "longitude": float(lon),
                 "name": _name_for(tags, "Nearby safe facility"),
@@ -122,7 +134,11 @@ async def _nearby_destinations(latitude: float, longitude: float) -> list[dict[s
 
     # Priority first, then distance. Only route the best few candidates.
     destinations.sort(key=lambda item: (item["priority"], item["air_distance_m"]))
-    return destinations[:5]
+    result = destinations[:5]
+    if len(_destination_cache) >= 200:
+        _destination_cache.pop(min(_destination_cache, key=lambda item: _destination_cache[item][0]))
+    _destination_cache[key] = (time.monotonic(), result)
+    return result
 
 
 async def _osrm_routes(origin_lat: float, origin_lon: float, destination: dict[str, Any]) -> list[dict[str, Any]]:

@@ -7,6 +7,7 @@ type Props = {
   citizenName: string;
   fallbackLatitude: number;
   fallbackLongitude: number;
+  hasLocation?: boolean;
   onBack: () => void;
 };
 
@@ -24,8 +25,9 @@ const TRACKING_STEPS = [
   { key: 'resolved', title: 'Response complete', detail: 'The responder marked this incident resolved.' },
 ] as const;
 
-export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackLatitude, fallbackLongitude, onBack }: Props) {
-  const [position, setPosition] = useState<PositionState>({ latitude: fallbackLatitude, longitude: fallbackLongitude, accuracy: null, label: 'Demo location' });
+export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackLatitude, fallbackLongitude, hasLocation = false, onBack }: Props) {
+  const [position, setPosition] = useState<PositionState>({ latitude: fallbackLatitude, longitude: fallbackLongitude, accuracy: null, label: hasLocation ? 'Last selected GPS location' : 'Location not shared' });
+  const [locationConfirmed, setLocationConfirmed] = useState(hasLocation);
   const [safety, setSafety] = useState<SafetyContext | null>(null);
   const [safetyError, setSafetyError] = useState('');
   const [type, setType] = useState<EmergencyType>('rescue');
@@ -48,7 +50,7 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
     catch (error) { setSafetyError(error instanceof Error ? error.message : 'Live environmental data unavailable'); }
   };
 
-  useEffect(() => { void refreshSafety(position.latitude, position.longitude); }, []);
+  useEffect(() => { if (hasLocation) void refreshSafety(position.latitude, position.longitude); }, []);
 
   useEffect(() => {
     if (!record || record.status === 'resolved' || record.status === 'cancelled') return;
@@ -126,7 +128,7 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
     navigator.geolocation.getCurrentPosition(
       (result) => {
         const next = { latitude: result.coords.latitude, longitude: result.coords.longitude, accuracy: result.coords.accuracy, label: 'Current GPS location' };
-        setPosition(next); void refreshSafety(next.latitude, next.longitude);
+        setPosition(next); setLocationConfirmed(true); void refreshSafety(next.latitude, next.longitude);
       },
       () => setPosition((current) => ({ ...current, label: 'Location permission not granted' })),
       { enableHighAccuracy: true, timeout: 8000 },
@@ -134,6 +136,7 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
   };
 
   const submitEmergency = async () => {
+    if (!locationConfirmed) { setSubmitError('Use your current location before sending this request.'); return; }
     setSubmitting(true); setSubmitError('');
     try {
       setRecord(await citizenSafetyApi.createEmergency({
@@ -276,7 +279,7 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
         <span className="emergency-siren-icon" aria-hidden="true">✦</span><strong>I NEED HELP</strong><span>Tap to request emergency assistance</span>
       </button>
       <div className="emergency-heading"><div><span className="safe-eyebrow">EMERGENCY HELP</span><h1>Request immediate assistance</h1><p>Your GPS location and the latest environmental snapshot will be attached to the request.</p></div><button type="button" className="location-button" onClick={useMyLocation}>⌖ Use my location</button></div>
-      <div className="emergency-status-summary"><span><b>Location</b><strong>{position.label}</strong>{position.accuracy !== null && <small>±{Math.round(position.accuracy)} m accuracy</small>}</span><span><b>Flood Risk</b><strong className={safety?.prototype_risk_level === 'critical' ? 'risk-critical' : ''}>{safety ? `${safety.prototype_risk_score}/100 · ${safety.prototype_risk_level.toUpperCase()}` : 'Checking…'}</strong></span><span><b>Safe Destination</b><strong>Shree Secondary School</strong><small>Recommended evacuation point</small></span></div>
+      <div className="emergency-status-summary"><span><b>Location</b><strong>{position.label}</strong>{position.accuracy !== null && <small>±{Math.round(position.accuracy)} m accuracy</small>}</span><span><b>Flood Risk</b><strong className={safety?.prototype_risk_level === 'critical' ? 'risk-critical' : ''}>{safety ? `${safety.prototype_risk_score}/100 · ${safety.prototype_risk_level.toUpperCase()}` : 'Checking…'}</strong></span><span><b>Evacuation destination</b><strong>Check the Live Map</strong><small>Facility availability is unverified</small></span></div>
       <div className={`emergency-grid ${formOpen ? 'form-open' : ''}`}>
         <div className="emergency-form-card">
           <span className="emergency-label">WHAT HELP DO YOU NEED?</span>
@@ -284,12 +287,12 @@ export default function CitizenEmergencyHelp({ citizenId, citizenName, fallbackL
           <label className="emergency-field"><span>NUMBER OF PEOPLE</span><input type="number" min={1} max={50} value={peopleCount} onChange={(e)=>setPeopleCount(Math.max(1,Math.min(50,Number(e.target.value)||1)))} /></label>
           <label className="emergency-field"><span>NOTES FOR RESPONDERS</span><textarea value={notes} maxLength={500} onChange={(e)=>setNotes(e.target.value)} placeholder="Example: elderly person with us, water rising near the ground floor…"/><small>{notes.length}/500</small></label>
           {submitError && <div className="emergency-error">{submitError}</div>}
-          <button type="button" className="emergency-submit" onClick={submitEmergency} disabled={submitting}>{submitting?'SENDING REQUEST…':'SEND EMERGENCY REQUEST'}</button>
+          <button type="button" className="emergency-submit" onClick={submitEmergency} disabled={submitting || !locationConfirmed}>{submitting?'SENDING REQUEST…':'SEND EMERGENCY REQUEST'}</button>
           <button type="button" className="figma-secondary emergency-back" onClick={onBack}>Cancel</button>
         </div>
         <aside className="emergency-context-card">
           <span className="emergency-label">ATTACHED LIVE CONTEXT</span>
-          <div className="emergency-location-box"><strong>{position.label}</strong><span>{position.latitude.toFixed(5)}, {position.longitude.toFixed(5)}</span>{position.accuracy!==null&&<small>GPS accuracy ±{Math.round(position.accuracy)} m</small>}</div>
+          <div className="emergency-location-box"><strong>{position.label}</strong><span>{locationConfirmed ? `${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}` : "Use current location to attach coordinates to your SOS."}</span>{position.accuracy!==null&&<small>GPS accuracy ±{Math.round(position.accuracy)} m</small>}</div>
           {safety ? <><div className={`emergency-risk-level ${safety.prototype_risk_level}`}><span>PROTOTYPE FLOOD RISK</span><strong>{safety.prototype_risk_score}/100 · {safety.prototype_risk_level.toUpperCase()}</strong></div><div className="emergency-live-stats"><div><span>Rain next 6h</span><strong>{safety.precipitation_next_6h_mm.toFixed(1)} mm</strong></div><div><span>Rain probability</span><strong>{safety.precipitation_probability_max_6h ?? '—'}%</strong></div><div><span>River discharge</span><strong>{safety.river_discharge_m3s!==null?`${safety.river_discharge_m3s.toFixed(1)} m³/s`:'—'}</strong></div><div><span>River trend</span><strong>{safety.river_trend_percent!==null?`${safety.river_trend_percent>0?'+':''}${safety.river_trend_percent}%`:'—'}</strong></div></div><p className="emergency-source">Live source: {safety.source}. The displayed risk score is our hackathon prototype heuristic, not an official warning.</p></> : <div className="emergency-live-loading">{safetyError||'Loading live rainfall and river data…'}</div>}
         </aside>
       </div>

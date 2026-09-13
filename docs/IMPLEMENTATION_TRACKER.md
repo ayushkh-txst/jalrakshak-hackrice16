@@ -13,6 +13,12 @@ Branch: `feature/login-page-ui`.
 
 ## Current scope change
 
+### Citizen street map and backend integration
+
+Citizen Live Map now uses an untinted street basemap, geographic layers, backend place/facility lookup and an authenticated feed limited to the citizen's own active SOS records. GPS names and coordinates stay consistent; the initial Houston preview is not a user location. Layer toggles and polling preserve the map viewport. Live route screening no longer silently includes demo Houston polygons, and route analysis follows current React state. See [CITIZEN_MAP.md](CITIZEN_MAP.md) for endpoint contracts, verification and startup steps. Official flood/shelter feeds and Stage 5 backend automatic rerouting remain pending.
+
+### Earlier navigation change
+
 At the user's request, remove the admin/responder AI Assistant sidebar item and its placeholder page. Admin NavCat is removed from the remaining implementation scope. The five admin views are Dashboard, Live Map, Incident Queue, Reports and Settings. Citizen NavCat and the existing incident guidance card are retained. The browser navigation check now covers these five views.
 
 ## Operational Reports (implemented after Stage 4)
