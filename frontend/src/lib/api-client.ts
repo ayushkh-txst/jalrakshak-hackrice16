@@ -1,4 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+import { authSession } from '../features/auth/auth-session';
+
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export class ApiError extends Error {
@@ -25,15 +27,16 @@ export async function apiRequest<T>(path: string, init?: RequestInit, timeoutMs:
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+    const token = authSession.get()?.access_token;
+    if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       credentials: "include",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...init?.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {

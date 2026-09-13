@@ -49,7 +49,7 @@ def api(tmp_path, monkeypatch):
 def create(client, **changes):
     payload = dict(citizen_id='citizen-a', citizen_name='Test citizen', emergency_type='medical', latitude=29.7179, longitude=-95.402, people_count=2, notes='We need assistance reaching the road.')
     payload.update(changes)
-    result = client.post('/api/v1/emergencies', json=payload)
+    result = client.post('/api/v1/emergencies', json=payload, headers=auth('citizen-a', 'citizen'))
     assert result.status_code == 201
     return result.json()
 
@@ -89,7 +89,7 @@ def test_reviews_persist_per_worker_and_material_changes_realert(api):
     with sessions() as db:
         record = db.get(Emergency,id); record.updated_at=datetime.now(timezone.utc); record.responder_eta_seconds=50; db.commit()
     assert client.get(BASE+'/notifications', headers=auth()).json()['unread_count'] == 0
-    client.patch('/api/v1/emergencies/'+id+'/location', json={'latitude':27.7172,'longitude':85.324})
+    client.patch('/api/v1/emergencies/'+id+'/location', json={'latitude':27.7172,'longitude':85.324}, headers=auth())
     assert client.get(BASE+'/notifications', headers=auth()).json()['unread_count'] == 1
     assert client.post(path, headers=auth(), json={'revision':item['revision']}).status_code == 409
 

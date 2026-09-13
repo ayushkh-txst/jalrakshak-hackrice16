@@ -7,6 +7,7 @@ from app.api.router import api_router
 from app.api.v1.emergencies import seed_demo_emergencies
 from app.core import database
 from app.core.config import settings
+from app.web import mount_frontend
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    mount_frontend(app, settings.frontend_dist)
     return app
 
 

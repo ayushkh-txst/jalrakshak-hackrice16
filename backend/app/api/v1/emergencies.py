@@ -15,6 +15,19 @@ from app.api.v1.hazards import signed_reporter
 router = APIRouter()
 
 
+def worker(reporter: dict = Depends(signed_reporter)) -> dict:
+    if reporter["role"] != "worker":
+        raise HTTPException(403, "Only responders can manage incident response.")
+    return reporter
+
+
+def accessible_emergency(db: Session, emergency_id: str, reporter: dict):
+    record = db.get(Emergency, emergency_id)
+    if record is None or (reporter["role"] != "worker" and record.citizen_id != reporter["sub"]):
+        raise HTTPException(404, "Emergency request not found")
+    return record
+
+
 class EmergencyType(str, Enum):
     rescue = "rescue"
     medical = "medical"
@@ -173,9 +186,13 @@ def seed_demo_emergencies(db: Session) -> None:
 
 
 @router.post("", response_model=EmergencyRecord, status_code=201)
-def create_emergency(payload: EmergencyCreate, db: Session = Depends(get_db)) -> EmergencyRecord:
+def create_emergency(payload: EmergencyCreate, reporter: dict = Depends(signed_reporter), db: Session = Depends(get_db)) -> EmergencyRecord:
+    if reporter["role"] != "citizen":
+        raise HTTPException(403, "Sign in as a citizen to submit an emergency request.")
     now = datetime.now(timezone.utc)
-    record = Emergency(**payload.model_dump(mode="json"), id=f"SOS-{uuid4().hex[:8].upper()}", status=EmergencyStatus.submitted.value, created_at=now, location_updated_at=now, is_demo=False)
+    data = payload.model_dump(mode="json")
+    data["citizen_id"] = reporter["sub"]
+    record = Emergency(**data, id=f"SOS-{uuid4().hex[:8].upper()}", status=EmergencyStatus.submitted.value, created_at=now, location_updated_at=now, is_demo=False)
     db.add(record)
     db.commit()
     db.refresh(record)
@@ -186,9 +203,12 @@ def create_emergency(payload: EmergencyCreate, db: Session = Depends(get_db)) ->
 def list_emergencies(
     status: EmergencyStatus | None = None,
     is_demo: bool | None = None,
+    reporter: dict = Depends(signed_reporter),
     db: Session = Depends(get_db),
 ) -> list[EmergencyRecord]:
     query = select(Emergency)
+    if reporter["role"] != "worker":
+        query = query.where(Emergency.citizen_id == reporter["sub"])
     if status is not None:
         query = query.where(Emergency.status == status.value)
     if is_demo is not None:
@@ -198,10 +218,8 @@ def list_emergencies(
 
 
 @router.get("/{emergency_id}", response_model=EmergencyRecord)
-def get_emergency(emergency_id: str, db: Session = Depends(get_db)) -> EmergencyRecord:
-    record = db.get(Emergency, emergency_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Emergency request not found")
+def get_emergency(emergency_id: str, reporter: dict = Depends(signed_reporter), db: Session = Depends(get_db)) -> EmergencyRecord:
+    record = accessible_emergency(db, emergency_id, reporter)
     return EmergencyRecord.model_validate(record)
 
 
@@ -209,11 +227,10 @@ def get_emergency(emergency_id: str, db: Session = Depends(get_db)) -> Emergency
 def update_emergency_location(
     emergency_id: str,
     payload: EmergencyLocationUpdate,
+    reporter: dict = Depends(signed_reporter),
     db: Session = Depends(get_db),
 ) -> EmergencyRecord:
-    record = db.get(Emergency, emergency_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Emergency request not found")
+    record = accessible_emergency(db, emergency_id, reporter)
     if record.is_demo:
         raise HTTPException(status_code=409, detail="Demo incidents do not accept live GPS updates")
     if record.status in {EmergencyStatus.resolved.value, EmergencyStatus.cancelled.value}:
@@ -233,6 +250,7 @@ def update_emergency_location(
 def update_emergency_navigation(
     emergency_id: str,
     payload: EmergencyNavigationUpdate,
+    reporter: dict = Depends(worker),
     db: Session = Depends(get_db),
 ) -> EmergencyRecord:
     record = db.get(Emergency, emergency_id)
@@ -270,7 +288,7 @@ def update_emergency_navigation(
 
 
 @router.patch("/{emergency_id}", response_model=EmergencyRecord)
-def update_emergency(emergency_id: str, payload: EmergencyUpdate, db: Session = Depends(get_db)) -> EmergencyRecord:
+def update_emergency(emergency_id: str, payload: EmergencyUpdate, reporter: dict = Depends(worker), db: Session = Depends(get_db)) -> EmergencyRecord:
     record = db.get(Emergency, emergency_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Emergency request not found")
@@ -318,10 +336,8 @@ def acknowledge_emergency(emergency_id: str, reporter: dict = Depends(signed_rep
 
 
 @router.post("/{emergency_id}/cancel", response_model=EmergencyRecord)
-def cancel_emergency(emergency_id: str, db: Session = Depends(get_db)) -> EmergencyRecord:
-    record = db.get(Emergency, emergency_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Emergency request not found")
+def cancel_emergency(emergency_id: str, reporter: dict = Depends(signed_reporter), db: Session = Depends(get_db)) -> EmergencyRecord:
+    record = accessible_emergency(db, emergency_id, reporter)
     if record.status != EmergencyStatus.submitted.value:
         raise HTTPException(status_code=409, detail="This request can only be cancelled before a responder is assigned")
     record.status = EmergencyStatus.cancelled.value

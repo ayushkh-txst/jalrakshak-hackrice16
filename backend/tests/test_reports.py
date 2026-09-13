@@ -137,7 +137,8 @@ def test_empty_report_does_not_invent_metrics(api):
 
 def test_lifecycle_clocks_survive_repeated_updates_gps_and_reconnect(api):
     client, sessions = api
-    created = client.post("/emergencies", json={"citizen_id": "test", "citizen_name": "Test",
+    client.headers.update(auth())
+    created = client.post("/emergencies", headers=auth("citizen"), json={"citizen_id": "test", "citizen_name": "Test",
         "emergency_type": "rescue", "latitude": 29.7, "longitude": -95.4, "accuracy_m": 35})
     assert created.status_code == 201
     data = created.json(); id = data["id"]
@@ -173,6 +174,7 @@ def test_lifecycle_clocks_survive_repeated_updates_gps_and_reconnect(api):
 
 def test_legacy_timing_is_unknown_until_a_new_action(api):
     client, sessions = api
+    client.headers.update(auth())
     with sessions() as db:
         db.add(row("legacy", status="assigned", responder_id="worker")); db.commit()
     client.patch("/emergencies/legacy", json={"status": "assigned"})

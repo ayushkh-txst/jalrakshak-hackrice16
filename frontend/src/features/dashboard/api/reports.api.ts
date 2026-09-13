@@ -1,4 +1,4 @@
-import { apiRequest, ApiError } from '../../../lib/api-client';
+import { apiRequest, ApiError, API_BASE_URL } from '../../../lib/api-client';
 import { authSession } from '../../auth/auth-session';
 
 export type ReportFilters = { start_date: string; end_date: string; timezone_name: string; severity: string; incident_type: string; status: string; location: string; page: number };
@@ -36,8 +36,7 @@ export const reportsApi = {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-      const response = await fetch(`${base}/admin/reports/export?${reportQuery(filters)}`, {
+      const response = await fetch(`${API_BASE_URL}/admin/reports/export?${reportQuery(filters)}`, {
         headers: headers(), credentials: 'include', signal: controller.signal,
       });
       if (!response.ok) throw new Error(response.status === 401 ? 'Sign in again to export reports.' : 'Report export failed. Please retry.');

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "postgresql+psycopg://g0ne:g0ne@localhost:5432/g0ne"
     frontend_origin: str = "http://localhost:5173"
+    frontend_dist: str = ""
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
@@ -22,6 +23,15 @@ class Settings(BaseSettings):
     demo_citizen_password: SecretStr = SecretStr("CitizenDemo2026!")
     demo_worker_email: str = "worker@example.com"
     demo_worker_password: SecretStr = SecretStr("WorkerDemo2026!")
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def postgres_driver(cls, value: str) -> str:
+        # Hosting providers supply a standard URL; this app installs psycopg 3.
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix):]
+        return value
 
     model_config = SettingsConfigDict(
         env_file=".env",
