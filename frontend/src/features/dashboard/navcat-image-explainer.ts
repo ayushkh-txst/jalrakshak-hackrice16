@@ -1,4 +1,4 @@
-type ScreenKind='live_map'|'alerts'|'ai'|'emergency'|'overview'|'responder'|'recovery'|'unknown';
+type ScreenKind='live_map'|'alerts'|'ai'|'emergency'|'overview'|'responder'|'unknown';
 
 type ScreenExplanation={title:string;summary:string;steps:string[]};
 
@@ -9,7 +9,6 @@ const SCREENS:Record<Exclude<ScreenKind,'unknown'>,ScreenExplanation>={
   emergency:{title:'Emergency Help',summary:'This screen creates and tracks an SOS request using the citizen’s current location and available safety context.',steps:['Choose Rescue, Medical, or Evacuation.','Confirm the number of people and add useful notes.','Use current GPS location.','Submit the SOS.','Keep the page open to follow responder assignment and status updates.']},
   overview:{title:'Citizen Overview',summary:'This is the citizen dashboard summary. It gives quick access to risk, alerts, map, emergency help, and the main safety tools.',steps:['Check the current safety summary.','Review any active alert.','Open Live Map for evacuation guidance.','Use Emergency Help when immediate assistance is needed.']},
   responder:{title:'Responder Emergency Queue',summary:'This is the responder workflow for reviewing active SOS requests, assigning responders, tracking progress, and resolving incidents.',steps:['Open the newest or highest-priority request.','Review citizen location, risk, notes, and people count.','Assign the appropriate responder.','Mark progress as en route and on scene.','Resolve the incident only after response is complete.']},
-  recovery:{title:'Recovery',summary:'Recovery is for after the immediate emergency, when the user is safe enough to focus on updates, support, and next steps.',steps:['Confirm immediate danger has passed.','Check official updates before traveling again.','Review available assistance or recovery information.','Return to Emergency Help if conditions become unsafe again.']},
 };
 
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]??c));}
@@ -21,7 +20,6 @@ function classify(text:string):ScreenKind{
   if(/navcat|ai assistant|ask navcat|new chat/.test(t))return'ai';
   if(/request immediate assistance|emergency help|waiting for a responder|i need help|response complete/.test(t))return'emergency';
   if(/approve requests|emergency queue|assigned responder|mark en route|resolve incident/.test(t))return'responder';
-  if(/recovery/.test(t))return'recovery';
   if(/overview|citizen safety/.test(t))return'overview';
   return'unknown';
 }
@@ -55,7 +53,7 @@ function appendCard(html:string){
 }
 
 function screenChooser(prompt:string){
-  appendCard(`<div class="navcat-hazard-source">SCREENSHOT HELP</div><strong>I can explain this JalRakshak screen.</strong><p>This browser did not expose local screenshot text detection, so choose the screen shown in the image:</p><div class="navcat-screen-choices">${(['live_map','alerts','emergency','ai','overview','responder','recovery'] as const).map(kind=>`<button type="button" data-navcat-screen="${kind}">${escapeHtml(SCREENS[kind].title)}</button>`).join('')}</div>`);
+  appendCard(`<div class="navcat-hazard-source">SCREENSHOT HELP</div><strong>I can explain this JalRakshak screen.</strong><p>This browser did not expose local screenshot text detection, so choose the screen shown in the image:</p><div class="navcat-screen-choices">${(['live_map','alerts','emergency','ai','overview','responder'] as const).map(kind=>`<button type="button" data-navcat-screen="${kind}">${escapeHtml(SCREENS[kind].title)}</button>`).join('')}</div>`);
   document.querySelectorAll<HTMLButtonElement>('[data-navcat-screen]').forEach(button=>button.addEventListener('click',()=>{
     const kind=button.dataset.navcatScreen as Exclude<ScreenKind,'unknown'>;appendCard(explanationHtml(kind,prompt));button.closest('.navcat-image-explanation')?.remove();
   },{once:true}));

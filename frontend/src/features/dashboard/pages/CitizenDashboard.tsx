@@ -6,7 +6,7 @@ import CitizenEmergencyHelp from './CitizenEmergencyHelp';
 import './CitizenDashboard.css';
 import './CitizenLiveMap.css';
 
-type NavItem = 'Overview' | 'Live Map' | 'Alerts' | 'AI Assistant' | 'Emergency Help' | 'Recovery';
+type NavItem = 'Overview' | 'Live Map' | 'Alerts' | 'AI Assistant' | 'Emergency Help';
 type BrowserLocation = { latitude: number; longitude: number } | null;
 type MapCenter = { latitude: number; longitude: number };
 type GuidanceStep = { title: string; detail: string; distance: string; eta: string };
@@ -19,7 +19,6 @@ const navItems: Array<{ label: NavItem; icon: string; badge?: number; muted?: bo
   { label: 'Alerts', icon: '♢', badge: 2 },
   { label: 'AI Assistant', icon: '▤' },
   { label: 'Emergency Help', icon: '⊙' },
-  { label: 'Recovery', icon: '◷', muted: true },
 ];
 
 const DEMO_CENTER = { latitude: 27.9516, longitude: 85.6846 };
