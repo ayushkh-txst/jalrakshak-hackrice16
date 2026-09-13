@@ -1,6 +1,20 @@
 import { FormEvent, useState } from 'react';
 import { authApi } from '../api/auth.api';
 import { ApiError } from '../../../lib/api-client';
+import './LoginDemo.css';
+
+// Public sample accounts from backend/app/core/config.py. Vite removes these
+// credentials from production builds; the shortcuts only appear on loopback hosts.
+const DEMO_ACCOUNTS = import.meta.env.DEV && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+  ? [
+      { label: 'Citizen', email: 'citizen@example.com', password: 'CitizenDemo2026!' },
+      { label: 'Admin', email: 'worker@example.com', password: 'WorkerDemo2026!' },
+    ]
+  : [];
+
+function demoAccount(email: string) {
+  return DEMO_ACCOUNTS.find((account) => account.email === email.trim().toLowerCase());
+}
 
 const ShieldMark = ({ large = false }: { large?: boolean }) => (
   <svg className={large ? 'shield-mark shield-mark--large' : 'shield-mark'} viewBox="0 0 64 64" aria-hidden="true">
@@ -66,12 +80,30 @@ function validateEmail(value: string): boolean {
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState(() => localStorage.getItem('g0ne:remembered-email') ?? '');
-  const [password, setPassword] = useState('');
+  const [initialEmail] = useState(() => localStorage.getItem('g0ne:remembered-email') || DEMO_ACCOUNTS[0]?.email || '');
+  const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState(() => demoAccount(initialEmail)?.password ?? '');
   const [rememberMe, setRememberMe] = useState(Boolean(localStorage.getItem('g0ne:remembered-email')));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const changeEmail = (value: string) => {
+    const account = demoAccount(value);
+    if (account || demoAccount(email)) setPassword(account?.password ?? '');
+    setEmail(value);
+    setShowPassword(false);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const selectDemo = (account: (typeof DEMO_ACCOUNTS)[number]) => {
+    setEmail(account.email);
+    setPassword(account.password);
+    setShowPassword(false);
+    setError(null);
+    setSuccess(null);
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -119,7 +151,7 @@ export default function LoginPage() {
     <main className="login-page">
       <section className="hero-panel">
         <header className="brand-row">
-          <div className="brand"><span className="brand-mark"><ShieldMark /></span><span>G-0ne</span></div>
+          <div className="brand"><span className="brand-mark"><ShieldMark /></span><span>G-One</span></div>
           <button className="language" type="button" aria-label="Change language"><span className="globe">◎</span> English <span className="chevron">⌄</span></button>
         </header>
 
@@ -141,12 +173,19 @@ export default function LoginPage() {
       <section className="form-panel">
         <div className="form-wrap">
           <h2>Welcome Back</h2>
-          <p className="subtitle">Sign in to continue to G-0ne</p>
+          <p className="subtitle">Sign in to continue to G-One</p>
+
+          {DEMO_ACCOUNTS.length > 0 && <div className="login-demo">
+            <p>Demo access <span>Choose a role, then sign in</span></p>
+            <div className="login-demo-options" role="group" aria-label="Demo account">
+              {DEMO_ACCOUNTS.map((account) => <button key={account.email} type="button" aria-pressed={demoAccount(email) === account} onClick={() => selectDemo(account)} disabled={isSubmitting}>{account.label}</button>)}
+            </div>
+          </div>}
 
           <form onSubmit={submit} noValidate>
             <label className="field">
               <span className="field-icon"><MailIcon /></span>
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" autoComplete="email" aria-label="Email address" disabled={isSubmitting} required />
+              <input type="email" value={email} onChange={(event) => changeEmail(event.target.value)} placeholder="Email address" autoComplete="email" aria-label="Email address" disabled={isSubmitting} required />
             </label>
             <label className="field">
               <span className="field-icon"><LockIcon /></span>
