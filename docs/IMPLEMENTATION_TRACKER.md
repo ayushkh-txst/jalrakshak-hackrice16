@@ -13,6 +13,10 @@ Branch: `feature/login-page-ui`.
 
 ## Current scope change
 
+### Admin dispatch notifications
+
+The user requested incident-based assistance with location-dependent emergency contacts. Added a worker-authenticated inbox and popup over persisted live SOS records, individual persisted review state, sourced US/Nepal contacts, copyable handoffs and optional server-side AI note extraction. The standalone admin AI chat sidebar remains removed. See [DISPATCH_ASSISTANT.md](DISPATCH_ASSISTANT.md) for contracts, source verification, configuration and test limits. This completes in-app incoming-SOS alerts; automatic rerouting, citizen notifications and external service dispatch remain separate work.
+
 ### Citizen street map and backend integration
 
 Citizen Live Map now uses an untinted street basemap, geographic layers, backend place/facility lookup and an authenticated feed limited to the citizen's own active SOS records. GPS names and coordinates stay consistent; the initial Houston preview is not a user location. Layer toggles and polling preserve the map viewport. Live route screening no longer silently includes demo Houston polygons, and route analysis follows current React state. See [CITIZEN_MAP.md](CITIZEN_MAP.md) for endpoint contracts, verification and startup steps. Official flood/shelter feeds and Stage 5 backend automatic rerouting remain pending.

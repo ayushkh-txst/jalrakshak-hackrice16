@@ -4,6 +4,8 @@ Prepared from the September 12, 2026 implementation session for continuing in a 
 
 ## Start here
 
+**September 13 update:** Citizen street-map integration was pushed in `3e07410`. The subsequent dispatch-assistance change adds worker inbox/popups, location-based sourced contacts, SQL review state and optional AI note extraction. Read [CITIZEN_MAP.md](CITIZEN_MAP.md) and [DISPATCH_ASSISTANT.md](DISPATCH_ASSISTANT.md). Inspect the current branch head before editing. This is an incident notification feature; the removed standalone admin AI chat page is not restored. Optional AI requires backend key/model configuration, while notifications and contacts work without it.
+
 - **Project:** JalRakshak / G-One, a HackRice flood-awareness, citizen assistance, and responder coordination web app. Nepal is the original use case; current local testing uses Houston/Rice University GPS. Do not hard-code all new behavior to either location.
 - **Repository:** https://github.com/ayushkh-txst/jalrakshak-hackrice16
 - **Working branch:** `feature/login-page-ui`
@@ -14,7 +16,7 @@ Prepared from the September 12, 2026 implementation session for continuing in a 
 - **Database:** configured PostgreSQL, with a persistent development SQLite fallback. The user's last observed backend was using SQLite. Preserve existing incident and hazard records.
 - **Roles:** citizen UI `/citizen`; admin/responder UI `/responder`. Backend authenticated responder role is named `worker`.
 
-**Immediate next work:** inspect the current branch and the existing routing/notification hooks, then implement the remaining Stage 5 automatic reroute coordination and persisted citizen/responder notifications. The manual GPS change is already implemented and pushed; the user has not yet confirmed its local behavior. Do not redo it or restart Stage 4.
+**Immediate next work:** inspect the current branch and implement remaining Stage 5 automatic reroute coordination and citizen/route-change notifications. Worker incoming-SOS alerts and individual review persistence are now implemented; do not duplicate that inbox. Manual Reports GPS and citizen map integration are already implemented. Do not restart Stage 4.
 
 Read [IMPLEMENTATION_TRACKER.md](IMPLEMENTATION_TRACKER.md) for the older stage history and [REPORTING.md](REPORTING.md) for exact report contracts. Current code and newer user instructions take precedence over this snapshot.
 

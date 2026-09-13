@@ -5,6 +5,7 @@ import './WorkerDashboard.css';
 import './WorkerMapEnhancements.css';
 import ResponderOperationsMap from './ResponderOperationsMap';
 import OperationalReports from './OperationalReports';
+import { DispatchNotifications, IncidentDispatchCard } from './DispatchAssistant';
 
 type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'report' | 'settings';
 type ViewName = 'queue' | 'map' | 'dashboard' | 'reports' | 'settings';
@@ -181,6 +182,14 @@ export default function WorkerDashboard() {
             </button>
           ))}
         </nav>
+        <DispatchNotifications onOpenIncident={(id) => {
+          const record = records.find(item => item.id === id);
+          if (record) openIncidentFromMap(record);
+          else void citizenSafetyApi.getEmergency(id).then(item => {
+            setRecords(current => [item, ...current.filter(row => row.id !== item.id)]);
+            openIncidentFromMap(item);
+          }).catch(err => setError(err instanceof Error ? err.message : 'Unable to open incident'));
+        }}/>
         <div className="ops-user"><span>{workerName.slice(0,1).toUpperCase()}</span><div><strong>{workerName}</strong><small>Responder</small></div><b>›</b></div>
       </aside>
 
@@ -243,7 +252,7 @@ export default function WorkerDashboard() {
 
               <div className="ops-side-stack">
                 <article className="ops-card responder-card"><span className="ops-card-label">ASSIGNED RESPONDER</span>{selected.responder_name ? <div className="responder-row"><span>{selected.responder_name.slice(0,2).toUpperCase()}</span><div><strong>{selected.responder_name}</strong><small>Responder unit · assigned</small></div><em>{selected.status === 'en_route' ? '● En Route' : selected.status === 'resolved' ? '✓ Resolved' : '● Assigned'}</em></div> : <div className="unassigned">No responder assigned yet.</div>}</article>
-                <article className="ops-card ai-card"><span className="ops-card-label">▱ AI GUIDANCE</span><p>{selected.risk_score !== null && selected.risk_score !== undefined && selected.risk_score >= 70 ? 'High flood-risk context detected. Prioritize rapid assignment and verify road access before dispatch.' : 'Review live GPS, rainfall, and river context before assigning the closest available response unit.'}</p>{selected.notes && <p><strong>Citizen note:</strong> {selected.notes}</p>}</article>
+                <IncidentDispatchCard record={selected}/>
                 <article className="ops-card metric-card"><div><span>RAIN NEXT 6H</span><strong>{selected.precipitation_next_6h_mm != null ? `${selected.precipitation_next_6h_mm.toFixed(1)} mm` : '—'}</strong></div><div><span>RISK SCORE</span><strong>{selected.risk_score != null ? `${selected.risk_score} / 100` : '—'}</strong></div><div><span>GPS ACCURACY</span><strong>{selected.accuracy_m != null ? `±${Math.round(selected.accuracy_m)}m` : '—'}</strong></div><div><span>ELAPSED</span><strong>{timeAgo(selected.created_at).replace(' ago','')}</strong></div><div><span>RIVER DISCHARGE</span><strong>{selected.river_discharge_m3s != null ? `${selected.river_discharge_m3s.toFixed(1)} m³/s` : '—'}</strong></div><div><span>LOCATION</span><strong>{selected.latitude.toFixed(4)}, {selected.longitude.toFixed(4)}</strong></div></article>
               </div>
             </div>

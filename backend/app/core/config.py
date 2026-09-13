@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
+    # Optional; keys stay on the backend. Alerts/contacts do not require AI.
+    openai_api_key: SecretStr = SecretStr("")
+    dispatch_ai_model: str = ""
 
     # Development-only demo accounts. Loaded from .env.
     # Use example.com so Pydantic EmailStr accepts the addresses during validation.
