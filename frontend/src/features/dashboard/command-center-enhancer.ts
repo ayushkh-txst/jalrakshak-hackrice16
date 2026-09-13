@@ -67,21 +67,12 @@ function relabelWorkerShell() {
   });
 }
 
-function renderStaticView(kind: string) {
-  const view = document.querySelector<HTMLElement>('[data-worker-static-view]');
-  if (!view || kind !== 'settings') return;
-  const key = kind + JSON.stringify(latestRecords);
-  if (view.dataset.renderKey === key) return;
-  view.dataset.renderKey = key;
-  view.innerHTML = `<header><span>SETTINGS</span><h1>Admin settings</h1><p>Role permissions, alert thresholds, integrations, and audit controls will be finalized during the security pass.</p></header>`;
-}
-
 function renderSummary() {
   const shell = document.querySelector<HTMLElement>('.ops-shell');
   if (!shell) return;
   relabelWorkerShell();
   const view = shell.dataset.workerView;
-  if (view !== 'queue') { if (view) renderStaticView(view); return; }
+  if (view !== 'queue') return;
 
   const active = activeRecords();
   const live = active.filter((record) => !record.is_demo);

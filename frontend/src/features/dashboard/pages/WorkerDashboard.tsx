@@ -8,8 +8,8 @@ import ResponderOperationsMap from './ResponderOperationsMap';
 import OperationalReports from './OperationalReports';
 import { DispatchNotifications, IncidentDispatchCard } from './DispatchAssistant';
 
-type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'report' | 'settings';
-type ViewName = 'queue' | 'map' | 'dashboard' | 'reports' | 'settings';
+type IconName = 'dashboard' | 'map' | 'incident' | 'queue' | 'report';
+type ViewName = 'queue' | 'map' | 'dashboard' | 'reports';
 type IncidentFilter = 'all' | 'new' | 'assigned' | 'en_route' | 'resolved' | 'live' | 'demo';
 
 const incidentFilters: Array<{ key: IncidentFilter; label: string }> = [
@@ -50,7 +50,7 @@ function Icon({ name }: { name: IconName }) {
   if (name === 'incident') return <svg {...common}><path d="M12 3 3 20h18L12 3Z"/><path d="M12 9v4M12 17h.01"/></svg>;
   if (name === 'queue') return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 2.5 2.5L16 9"/></svg>;
   if (name === 'report') return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 16v-3M12 16V9M16 16v-6"/></svg>;
-  return <svg {...common}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1v.1H9.6V21a1.7 1.7 0 0 0-.4-1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 3.8 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H2.1V9.6h.1a1.7 1.7 0 0 0 1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.26 3.4l.06.06A1.7 1.7 0 0 0 8.2 3.8a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V2.1h4v.1a1.7 1.7 0 0 0 .4 1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.2c.13.37.34.7.6 1 .28.26.63.4 1 .4h.1v4H21c-.37 0-.72.14-1 .4-.26.3-.47.63-.6 1Z"/></svg>;
+  return null;
 }
 
 const statusOrder: EmergencyStatus[] = ['submitted', 'assigned', 'en_route', 'resolved'];
@@ -172,7 +172,7 @@ export default function WorkerDashboard() {
           {([
             ['dashboard', 'Dashboard', 'dashboard'], ['map', 'Live Map', 'map'],
             ['queue', 'Incident Queue', 'queue'],
-            ['reports', 'Reports', 'report'], ['settings', 'Settings', 'settings'],
+            ['reports', 'Reports', 'report'],
           ] as Array<[ViewName, string, IconName]>).map(([view, label, icon]) => (
             <button key={view} type="button" data-worker-nav={view}
               className={activeView === view ? 'active' : ''}
