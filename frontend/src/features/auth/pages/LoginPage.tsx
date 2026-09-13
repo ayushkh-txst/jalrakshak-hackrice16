@@ -1,14 +1,13 @@
 import { FormEvent, useState } from 'react';
 import { authApi } from '../api/auth.api';
 import { ApiError } from '../../../lib/api-client';
-import './LoginDemo.css';
 
 // Public sample accounts from backend/app/core/config.py. Vite removes these
-// credentials from production builds; the shortcuts only appear on loopback hosts.
+// credentials from production builds; autofill only runs on loopback hosts.
 const DEMO_ACCOUNTS = import.meta.env.DEV && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
   ? [
-      { label: 'Citizen', email: 'citizen@example.com', password: 'CitizenDemo2026!' },
-      { label: 'Admin', email: 'worker@example.com', password: 'WorkerDemo2026!' },
+      { email: 'citizen@example.com', password: 'CitizenDemo2026!' },
+      { email: 'worker@example.com', password: 'WorkerDemo2026!' },
     ]
   : [];
 
@@ -97,14 +96,6 @@ export default function LoginPage() {
     setSuccess(null);
   };
 
-  const selectDemo = (account: (typeof DEMO_ACCOUNTS)[number]) => {
-    setEmail(account.email);
-    setPassword(account.password);
-    setShowPassword(false);
-    setError(null);
-    setSuccess(null);
-  };
-
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -174,13 +165,6 @@ export default function LoginPage() {
         <div className="form-wrap">
           <h2>Welcome Back</h2>
           <p className="subtitle">Sign in to continue to G-One</p>
-
-          {DEMO_ACCOUNTS.length > 0 && <div className="login-demo">
-            <p>Demo access <span>Choose a role, then sign in</span></p>
-            <div className="login-demo-options" role="group" aria-label="Demo account">
-              {DEMO_ACCOUNTS.map((account) => <button key={account.email} type="button" aria-pressed={demoAccount(email) === account} onClick={() => selectDemo(account)} disabled={isSubmitting}>{account.label}</button>)}
-            </div>
-          </div>}
 
           <form onSubmit={submit} noValidate>
             <label className="field">
