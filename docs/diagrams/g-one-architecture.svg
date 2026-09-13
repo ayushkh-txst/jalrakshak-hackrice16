@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1400" viewBox="0 0 1600 1400" role="img" aria-labelledby="title desc">
 <title id="title">G-One system architecture</title>
-<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication and two in-memory demo accounts. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
+<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication and up to five configured demo accounts. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#d6b765" stroke-width="1.5"/></marker>
 <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#87c7e6" stroke-width="1.5"/></marker>
@@ -46,7 +46,7 @@
 <rect x="548" y="320" width="492" height="103" rx="14" fill="#2c2a20" stroke="#756336" stroke-width="1.5"/>
 <g transform="translate(568 343) scale(1.1666666666666667)" fill="none" stroke="#d6b765" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="12" rx="2"/><path d="M7 10V6a5 5 0 0 1 10 0v4M12 15v3"/></g>
 <text x="610" y="366" font-size="23" font-weight="700" fill="#f4f1e9">JWT auth + role checks</text>
-<text x="568" y="401" font-size="20" font-weight="400" fill="#b0bec1">Two demo accounts held in server memory</text>
+<text x="568" y="401" font-size="20" font-weight="400" fill="#b0bec1">Up to five demo accounts in server memory</text>
 <rect x="548" y="452" width="492" height="104" rx="14" fill="#20292c" stroke="#354247" stroke-width="1.5"/>
 <text x="570" y="487" font-size="25" font-weight="700" fill="#f4f1e9">Safety + routing</text>
 <text x="570" y="522" font-size="21" font-weight="400" fill="#b0bec1">Weather context · facilities · road routes</text>

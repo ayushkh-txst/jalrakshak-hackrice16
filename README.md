@@ -44,7 +44,7 @@ The demo is hosted at [g-one-app.onrender.com](https://g-one-app.onrender.com).
 | Web application | React, TypeScript, Vite, React Router | Citizen and admin dashboards; browser GPS; REST polling |
 | Maps | Leaflet; OpenStreetMap and Esri tiles; Google Maps county embeds | Map display, incident markers, reported hazards, and routes |
 | API | FastAPI, Python, Pydantic | Authentication, validation, incidents, hazards, routing, dispatch, and reports |
-| Access control | JWT; Argon2 password hashing; two in-memory demo accounts | Citizen record ownership and responder-only operations |
+| Access control | JWT; Argon2 password hashing; up to five configured demo accounts | Citizen record ownership and responder-only operations |
 | Persistence | PostgreSQL, SQLAlchemy, psycopg | Emergencies, shared hazards, and dispatch reviews |
 | Forecast context | Open-Meteo Weather and Flood APIs | Rainfall and modeled river-discharge forecasts |
 | Location and routing | ArcGIS reverse geocoding, Overpass / OSM, OSRM | Place labels, nearby facilities, and road-route geometry |
@@ -58,17 +58,36 @@ from the browser. Live updates currently use HTTP polling.
 
 ### Accounts and concurrent use
 
-The app has two roles, **citizen** and **worker**, with one configured demo
-account per role. `InMemoryUserRepository` loads those accounts from server
-configuration; user accounts are not currently stored in PostgreSQL. There is
-no registration endpoint, and the Google/GitHub login buttons are not connected
-to OAuth providers.
+The app has two roles, **citizen** and **worker** (shown as Admin). The Render
+Blueprint configures **three citizen accounts and two admin accounts**:
 
-Multiple browser sessions can sign into a demo account, but those sessions share
-the same user ID and access to that account's records. They do not represent
-separate citizens or responders. Public multi-user access requires individual
-accounts, an account-management flow, and validation of record isolation.
-Capacity for 100 simultaneous users has not been load-tested.
+| Login email | Dashboard | Identity |
+| --- | --- | --- |
+| `citizen@example.com` | Citizen | Original citizen |
+| `citizen2@example.com` | Citizen | Demo Citizen 2 |
+| `citizen3@example.com` | Citizen | Demo Citizen 3 |
+| `worker@example.com` | Admin | Original admin |
+| `worker2@example.com` | Admin | Demo Admin 2 |
+
+`InMemoryUserRepository` rebuilds the configured accounts with stable user IDs
+at server startup; accounts are not stored in PostgreSQL. Each added account
+requires its own password variable. An empty or missing password disables that
+additional account. Render generates those three passwords privately on the
+Blueprint sync; see [login setup](docs/DEPLOY_RENDER.md#additional-demo-logins).
+Original account IDs and passwords are preserved.
+
+Citizens can read and update only their own SOS records. Both admins can view
+the shared incident queue and coordinate responses; marking a status from a
+second admin session preserves the assigned responder. Dispatch review state
+is separate for each admin. Multiple sessions using the **same login** still
+share the same identity and records.
+
+There is no registration endpoint, and Google/GitHub buttons are not connected
+to OAuth providers. Public account onboarding remains future work. Five-account
+functional checks cover real logins, citizen isolation, both admins' workflows,
+and citizen status updates against a local FastAPI/SQLite server. External
+weather/geocoder responses are test fixtures. This does **not** establish
+capacity for 100 simultaneous users or benchmark Render's free instance.
 
 ### Data and demo scope
 

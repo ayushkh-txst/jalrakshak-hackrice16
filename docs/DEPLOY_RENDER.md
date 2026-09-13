@@ -30,9 +30,46 @@ Render generates the JWT signing secret and connects the database automatically.
 No localhost URL, frontend API URL, or CORS origin needs to be pasted into Render.
 The Docker build sets `VITE_API_BASE_URL=/api/v1` for the bundled frontend.
 
-The two login accounts are a hackathon demo setup, not public user registration.
+The configured login accounts are a hackathon demo setup, not public user registration.
 Localhost password autofill remains available for your recording. The hosted
 build uses the new passwords chosen in Render; you can save them in your browser.
+
+## Additional demo logins
+
+The original citizen/admin accounts keep their existing passwords. The Blueprint
+adds three password variables with `generateValue: true`. Render generates a
+private random password once for each missing variable and preserves existing
+values on subsequent syncs.
+
+For an existing deployment:
+
+1. Open **Blueprints → g-one → Syncs** and wait for the latest sync. If it has not
+   picked up the commit, use **Manual sync**.
+2. Open **g-one-app → Deploys** and wait for the new deployment to show **Live**.
+3. Open **g-one-app → Environment**, reveal/copy the Value for the matching key:
+
+   | Login email | Dashboard | Password comes from this Render variable |
+   | --- | --- | --- |
+   | `citizen2@example.com` | Citizen | `DEMO_CITIZEN_2_PASSWORD` |
+   | `citizen3@example.com` | Citizen | `DEMO_CITIZEN_3_PASSWORD` |
+   | `worker2@example.com` | Admin | `DEMO_WORKER_2_PASSWORD` |
+
+   On the G-One sign-in page, put the email in **Email address** and the copied
+   Render Value in **Password**. Keep the generated value exactly as shown,
+   including any trailing `=`. The variable name is not the password.
+4. Sign in with each new account and submit clearly marked test requests from
+   the two new citizens. Both admins should see all live requests; citizens
+   should see only their own requests and response updates.
+
+These are separate identities, not extra sessions of the original account.
+There are now three citizens and two admins when all password variables are
+configured. Additional accounts are disabled if their password is missing or
+empty, so an app deploy arriving before the Blueprint sync retains the original
+working logins. No additional service or paid plan is requested by this change.
+
+For local use, configure the same three keys with separate passwords of 12–128
+characters in `backend/.env` and restart the backend. There are no hardcoded
+passwords or added role-selection buttons for these accounts.
 
 ## Verify the deployed demo
 
@@ -71,8 +108,8 @@ the updated code: emergency requests now send and require the login token.
   expiration or explicitly choose a paid database for ongoing hosting.
 - No local SQLite fallback is used in production. A database error must be fixed
   in Render; it must not silently switch to storage that disappears on restart.
-- If a build fails, inspect **g-one-app → Logs**. If login fails, check the two
-  `DEMO_..._PASSWORD` values. If the database fails, verify both resources are
+- If a build fails, inspect **g-one-app → Logs**. If login fails, check the matching
+  `DEMO_..._PASSWORD` value. If the database fails, verify both resources are
   in the same region and the database is available.
 
 References: https://render.com/docs/blueprint-spec,
@@ -90,3 +127,20 @@ cd frontend
 VITE_API_BASE_URL=/api/v1 npm run build
 TEST_SERVE_BUILT=1 TEST_PYTHON=/path/to/venv/bin/python CHROMIUM_EXECUTABLE_PATH=/path/to/chromium node tests/dispatch.browser.mjs
 ```
+
+
+## Five-account functional check
+
+```bash
+cd frontend
+VITE_API_BASE_URL=/api/v1 npm run build
+TEST_PYTHON=/path/to/venv/bin/python CHROMIUM_EXECUTABLE_PATH=/path/to/chromium node tests/multiuser.browser.mjs
+```
+
+This runs five isolated browser sessions against the production frontend and a
+local FastAPI/SQLite database, with weather/geocoder fixtures. It checks the
+three citizens' separate requests, both admins' queue access, assignment and
+status updates, responder preservation, and Reports totals. It does not submit
+requests to the hosted service, dial emergency contacts, or measure 100-user
+capacity. See `backend/tests/test_demo_accounts.py` for API ownership and
+per-admin dispatch-review checks using actual password logins.

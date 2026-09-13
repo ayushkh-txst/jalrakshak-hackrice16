@@ -22,6 +22,12 @@ services:
         sync: false
       - key: DEMO_WORKER_PASSWORD
         sync: false
+      - key: DEMO_CITIZEN_2_PASSWORD
+        generateValue: true
+      - key: DEMO_CITIZEN_3_PASSWORD
+        generateValue: true
+      - key: DEMO_WORKER_2_PASSWORD
+        generateValue: true
 
 databases:
   - name: g-one-db

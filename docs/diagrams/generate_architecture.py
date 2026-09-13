@@ -7,7 +7,7 @@ BG, PANEL, CARD = "#101516", "#171e20", "#20292c"
 WHITE, MUTED, GOLD, BLUE, GREEN = "#f4f1e9", "#b0bec1", "#d6b765", "#87c7e6", "#8dd4b0"
 parts = [f'''<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1400" viewBox="0 0 1600 1400" role="img" aria-labelledby="title desc">
 <title id="title">G-One system architecture</title>
-<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication and two in-memory demo accounts. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
+<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication and up to five configured demo accounts. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="{GOLD}" stroke-width="1.5"/></marker>
 <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="{BLUE}" stroke-width="1.5"/></marker>
@@ -97,7 +97,7 @@ lines(80, 745, ["Updates through REST polling", "Incidents / dispatch: 5 seconds
 rect(548, 320, 492, 103, "#2c2a20", "#756336")
 icon("lock", 568, 343)
 text(610, 366, "JWT auth + role checks", 23, WHITE, 700)
-text(568, 401, "Two demo accounts held in server memory", 20, MUTED)
+text(568, 401, "Up to five demo accounts in server memory", 20, MUTED)
 rect(548, 452, 492, 104)
 text(570, 487, "Safety + routing", 25, WHITE, 700)
 lines(570, 522, ["Weather context · facilities · road routes"], 21)

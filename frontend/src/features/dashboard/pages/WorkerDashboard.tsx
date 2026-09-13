@@ -128,7 +128,10 @@ export default function WorkerDashboard() {
     if (!selected) return;
     setUpdating(true);
     try {
-      const updated = await citizenSafetyApi.updateEmergency(selected.id, { status, responder_id: workerId, responder_name: workerName });
+      const updated = await citizenSafetyApi.updateEmergency(selected.id, {
+        status,
+        ...(status === 'assigned' ? { responder_id: workerId, responder_name: workerName } : {}),
+      });
       setRecords((current) => current.map((item) => item.id === updated.id ? updated : item));
       await loadQueue(activeFilter);
       setError('');
