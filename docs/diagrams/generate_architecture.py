@@ -97,7 +97,7 @@ lines(80, 745, ["Updates through REST polling", "Incidents / dispatch: 5 seconds
 rect(548, 320, 492, 103, "#2c2a20", "#756336")
 icon("lock", 568, 343)
 text(610, 366, "JWT auth + role checks", 23, WHITE, 700)
-text(568, 401, "2 in-memory demo accounts · citizen ownership", 20, MUTED)
+text(568, 401, "Two demo accounts held in server memory", 20, MUTED)
 rect(548, 452, 492, 104)
 text(570, 487, "Safety + routing", 25, WHITE, 700)
 lines(570, 522, ["Weather context · facilities · road routes"], 21)
