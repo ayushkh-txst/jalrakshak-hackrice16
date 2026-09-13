@@ -7,7 +7,7 @@ BG, PANEL, CARD = "#101516", "#171e20", "#20292c"
 WHITE, MUTED, GOLD, BLUE, GREEN = "#f4f1e9", "#b0bec1", "#d6b765", "#87c7e6", "#8dd4b0"
 parts = [f'''<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1400" viewBox="0 0 1600 1400" role="img" aria-labelledby="title desc">
 <title id="title">G-One system architecture</title>
-<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The configured release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
+<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication and two in-memory demo accounts. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="{GOLD}" stroke-width="1.5"/></marker>
 <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="{BLUE}" stroke-width="1.5"/></marker>
@@ -70,7 +70,7 @@ icon("shield", 72, 59, 38)
 text(144, 92, "G-One", 50, WHITE, 700)
 text(146, 126, "FLOOD AWARENESS · EMERGENCY COORDINATION", 17, GOLD, 700, 2)
 text(1050, 74, "SYSTEM ARCHITECTURE", 24, WHITE, 700, 1)
-text(1050, 108, "HackRice 16 · implemented app + Render target", 19, MUTED)
+text(1050, 108, "HackRice 16 · demo hosted on Render", 19, MUTED)
 parts.append('<path d="M56 157H1544" stroke="#354247"/>')
 
 # Three runtime boundaries. Code stays in one API service.
@@ -97,7 +97,7 @@ lines(80, 745, ["Updates through REST polling", "Incidents / dispatch: 5 seconds
 rect(548, 320, 492, 103, "#2c2a20", "#756336")
 icon("lock", 568, 343)
 text(610, 366, "JWT auth + role checks", 23, WHITE, 700)
-text(568, 401, "Citizen ownership · responder access", 21, MUTED)
+text(568, 401, "2 in-memory demo accounts · citizen ownership", 20, MUTED)
 rect(548, 452, 492, 104)
 text(570, 487, "Safety + routing", 25, WHITE, 700)
 lines(570, 522, ["Weather context · facilities · road routes"], 21)
@@ -145,7 +145,7 @@ rect(524, 961, 540, 143, "#1b2924", "#456c58")
 icon("database", 548, 982, color=GREEN)
 text(592, 1007, "PostgreSQL", 28, WHITE, 700)
 text(805, 1007, "SQLAlchemy + psycopg", 19, MUTED)
-lines(548, 1050, ["Users · emergencies · shared hazards", "Dispatch reviews · reports read incident records"], 20)
+lines(548, 1050, ["Emergencies · shared hazards · dispatch reviews", "Reports aggregate stored incident records"], 20)
 edge("M794 880 V961", both=True)
 text(810, 923, "Read / write", 19, GOLD)
 
@@ -157,10 +157,10 @@ text(1235, 1022, "External requests", 20, MUTED)
 edge("M1176 1057 H1217", blue=True, dashed=True)
 text(1235, 1064, "Optional integration", 20, MUTED)
 
-# Delivery pipeline is a configured target, not a claim of a live deployment.
+# Delivery pipeline for the hosted demo.
 rect(56, 1152, 1488, 192, "#211f18", "#756336")
 text(80, 1189, "RELEASE PATH", 17, GOLD, 700, 2)
-text(267, 1189, "Configured in Dockerfile + render.yaml · hosting must still be created", 20, MUTED)
+text(267, 1189, "Dockerfile + render.yaml · frontend and API share one HTTPS URL", 20, MUTED)
 rect(80, 1215, 394, 102, CARD, "#665c3c")
 icon("git", 101, 1238)
 text(145, 1259, "GitHub source", 25, WHITE, 700)

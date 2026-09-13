@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1400" viewBox="0 0 1600 1400" role="img" aria-labelledby="title desc">
 <title id="title">G-One system architecture</title>
-<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The configured release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
+<desc id="desc">Citizen and admin React dashboards call a FastAPI backend with JWT authentication and two in-memory demo accounts. Safety and routing use Open-Meteo, OSRM, Overpass, and ArcGIS. Emergencies, hazards, and dispatch reviews are stored in PostgreSQL; reports query saved records. OpenAI note analysis is optional. Browser maps load external tiles and embeds. The release path builds the frontend and Python server into one Docker web service on Render with a managed PostgreSQL database.</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#d6b765" stroke-width="1.5"/></marker>
 <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#87c7e6" stroke-width="1.5"/></marker>
@@ -12,7 +12,7 @@
 <text x="144" y="92" font-size="50" font-weight="700" fill="#f4f1e9">G-One</text>
 <text x="146" y="126" font-size="17" font-weight="700" fill="#d6b765" letter-spacing="2">FLOOD AWARENESS · EMERGENCY COORDINATION</text>
 <text x="1050" y="74" font-size="24" font-weight="700" fill="#f4f1e9" letter-spacing="1">SYSTEM ARCHITECTURE</text>
-<text x="1050" y="108" font-size="19" font-weight="400" fill="#b0bec1">HackRice 16 · implemented app + Render target</text>
+<text x="1050" y="108" font-size="19" font-weight="400" fill="#b0bec1">HackRice 16 · demo hosted on Render</text>
 <path d="M56 157H1544" stroke="#354247"/>
 <rect x="56" y="196" width="360" height="684" rx="14" fill="#171e20" stroke="#665c3c" stroke-width="1.5"/>
 <rect x="524" y="196" width="540" height="684" rx="14" fill="#171e20" stroke="#665c3c" stroke-width="1.5"/>
@@ -46,7 +46,7 @@
 <rect x="548" y="320" width="492" height="103" rx="14" fill="#2c2a20" stroke="#756336" stroke-width="1.5"/>
 <g transform="translate(568 343) scale(1.1666666666666667)" fill="none" stroke="#d6b765" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="12" rx="2"/><path d="M7 10V6a5 5 0 0 1 10 0v4M12 15v3"/></g>
 <text x="610" y="366" font-size="23" font-weight="700" fill="#f4f1e9">JWT auth + role checks</text>
-<text x="568" y="401" font-size="21" font-weight="400" fill="#b0bec1">Citizen ownership · responder access</text>
+<text x="568" y="401" font-size="20" font-weight="400" fill="#b0bec1">2 in-memory demo accounts · citizen ownership</text>
 <rect x="548" y="452" width="492" height="104" rx="14" fill="#20292c" stroke="#354247" stroke-width="1.5"/>
 <text x="570" y="487" font-size="25" font-weight="700" fill="#f4f1e9">Safety + routing</text>
 <text x="570" y="522" font-size="21" font-weight="400" fill="#b0bec1">Weather context · facilities · road routes</text>
@@ -93,8 +93,8 @@
 <g transform="translate(548 982) scale(1.1666666666666667)" fill="none" stroke="#8dd4b0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 4 18 4 18 0V5M3 12c0 4 18 4 18 0"/></g>
 <text x="592" y="1007" font-size="28" font-weight="700" fill="#f4f1e9">PostgreSQL</text>
 <text x="805" y="1007" font-size="19" font-weight="400" fill="#b0bec1">SQLAlchemy + psycopg</text>
-<text x="548" y="1050" font-size="20" font-weight="400" fill="#b0bec1">Users · emergencies · shared hazards</text>
-<text x="548" y="1080" font-size="20" font-weight="400" fill="#b0bec1">Dispatch reviews · reports read incident records</text>
+<text x="548" y="1050" font-size="20" font-weight="400" fill="#b0bec1">Emergencies · shared hazards · dispatch reviews</text>
+<text x="548" y="1080" font-size="20" font-weight="400" fill="#b0bec1">Reports aggregate stored incident records</text>
 <path d="M794 880 V961" fill="none" stroke="#d6b765" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
 <text x="810" y="923" font-size="19" font-weight="400" fill="#d6b765">Read / write</text>
 <text x="1172" y="937" font-size="17" font-weight="700" fill="#d6b765" letter-spacing="1.2">READING THIS DIAGRAM</text>
@@ -106,7 +106,7 @@
 <text x="1235" y="1064" font-size="20" font-weight="400" fill="#b0bec1">Optional integration</text>
 <rect x="56" y="1152" width="1488" height="192" rx="14" fill="#211f18" stroke="#756336" stroke-width="1.5"/>
 <text x="80" y="1189" font-size="17" font-weight="700" fill="#d6b765" letter-spacing="2">RELEASE PATH</text>
-<text x="267" y="1189" font-size="20" font-weight="400" fill="#b0bec1">Configured in Dockerfile + render.yaml · hosting must still be created</text>
+<text x="267" y="1189" font-size="20" font-weight="400" fill="#b0bec1">Dockerfile + render.yaml · frontend and API share one HTTPS URL</text>
 <rect x="80" y="1215" width="394" height="102" rx="14" fill="#20292c" stroke="#665c3c" stroke-width="1.5"/>
 <g transform="translate(101 1238) scale(1.1666666666666667)" fill="none" stroke="#d6b765" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="4" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="6" cy="20" r="2"/><path d="M6 6v12M18 9v2c0 5-12 0-12 6"/></g>
 <text x="145" y="1259" font-size="25" font-weight="700" fill="#f4f1e9">GitHub source</text>

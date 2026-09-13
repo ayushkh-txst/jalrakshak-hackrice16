@@ -13,8 +13,8 @@ records. Built for **HackRice 16**.
 [![G-One system architecture: citizen and admin clients, FastAPI services, external APIs, PostgreSQL, and the configured Render deployment](docs/diagrams/g-one-architecture.svg)](docs/diagrams/g-one-architecture.svg)
 
 [Open the diagram at full size](docs/diagrams/g-one-architecture.svg).
-The diagram describes the implemented application and its configured Render
-deployment target. Hosting still needs to be created using the guide below.
+The diagram describes the implemented application and its Render deployment.
+The demo is hosted at [g-one-app.onrender.com](https://g-one-app.onrender.com).
 
 ### How a request moves through G-One
 
@@ -44,8 +44,8 @@ deployment target. Hosting still needs to be created using the guide below.
 | Web application | React, TypeScript, Vite, React Router | Citizen and admin dashboards; browser GPS; REST polling |
 | Maps | Leaflet; OpenStreetMap and Esri tiles; Google Maps county embeds | Map display, incident markers, reported hazards, and routes |
 | API | FastAPI, Python, Pydantic | Authentication, validation, incidents, hazards, routing, dispatch, and reports |
-| Access control | JWT; Argon2 password hashing | Citizen record ownership and responder-only operations |
-| Persistence | PostgreSQL, SQLAlchemy, psycopg | Users, emergencies, shared hazards, and dispatch reviews |
+| Access control | JWT; Argon2 password hashing; two in-memory demo accounts | Citizen record ownership and responder-only operations |
+| Persistence | PostgreSQL, SQLAlchemy, psycopg | Emergencies, shared hazards, and dispatch reviews |
 | Forecast context | Open-Meteo Weather and Flood APIs | Rainfall and modeled river-discharge forecasts |
 | Location and routing | ArcGIS reverse geocoding, Overpass / OSM, OSRM | Place labels, nearby facilities, and road-route geometry |
 | Optional AI | OpenAI Responses API, called by the backend | Structured note evidence; enabled with `OPENAI_API_KEY` and `DISPATCH_AI_MODEL` |
@@ -55,6 +55,20 @@ The backend is one application with logical API modules. It uses bounded
 in-process caches for selected provider lookups and AI results. Browser maps load
 tiles and embeds directly; some route-screening requests also call OSRM directly
 from the browser. Live updates currently use HTTP polling.
+
+### Accounts and concurrent use
+
+The app has two roles, **citizen** and **worker**, with one configured demo
+account per role. `InMemoryUserRepository` loads those accounts from server
+configuration; user accounts are not currently stored in PostgreSQL. There is
+no registration endpoint, and the Google/GitHub login buttons are not connected
+to OAuth providers.
+
+Multiple browser sessions can sign into a demo account, but those sessions share
+the same user ID and access to that account's records. They do not represent
+separate citizens or responders. Public multi-user access requires individual
+accounts, an account-management flow, and validation of record isolation.
+Capacity for 100 simultaneous users has not been load-tested.
 
 ### Data and demo scope
 
