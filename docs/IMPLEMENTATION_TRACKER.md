@@ -2,12 +2,14 @@
 
 Branch: `feature/login-page-ui`.
 
+**Continuing in a new chat? Read [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) first.** It records the latest application checkpoint, completed work, remaining tasks in order, code locations, validation limits, and local update steps.
+
 ## Stage status
 
 - Stages 1–3: existing Incident Queue, lifecycle sync, and navigation persistence retained. User reported the working flow; this change does not claim a full re-test of those stages.
 - Stage 4: shared-hazard save and citizen marker confirmed on the user's installation. The responder Live Map/navigation repair below completes the missing map integration; its browser regressions pass in isolation.
 - Stage 5: next — complete automatic reroute coordination, backend route invalidation, and responder/citizen notifications.
-- Stages 6–20: pending in the user's original priority order, with the scope change below. The responder incident/hazard Live Map is now geographic; official county flood/shelter feeds remain later work.
+- Later work: use the ordered backlog in `PROJECT_HANDOFF.md`. The exact older Stages 6–20 numbering is not reconstructed here. The responder incident/hazard Live Map is now geographic; official county flood/shelter feeds remain later work.
 
 ## Current scope change
 
@@ -20,7 +22,8 @@ At the user's request, remove the admin/responder AI Assistant sidebar item and 
 - Added first acknowledgment, assignment, dispatch, on-scene, resolution, and latest citizen GPS receipt timestamps. Startup adds nullable columns without resetting records. Unknown history is never backfilled from `updated_at`. Repeated actions do not reset first milestones; navigation does not refresh citizen GPS freshness. SQLite API timestamps now include UTC.
 - Added a real Acknowledge action. Assignment also counts as acknowledgment. Arrival alone does not invent a dispatch time.
 - CSV export uses the same backend filters and exports all matching records, including timestamps, with spreadsheet formula escaping. No names, notes, tokens or photos are exported.
-- Data limits are explicit: prototype risk snapshots, self-reported group sizes, GPS groups instead of unrecorded districts, unavailable shelter occupancy/offline-sync/alert-delivery analytics. All five Reports tabs render relevant data or the specific missing measurement. No fake alert statistics or rescue totals.
+- Data limits are explicit: prototype risk snapshots, self-reported group sizes, GPS groups instead of unrecorded districts, unavailable shelter occupancy/offline-sync/alert-delivery analytics. Four main Reports tabs show saved data; unconnected analytics are documented in compact data-source notes. Sparse records show actual active/status counts, with timing cards only when samples exist.
+- GPS filtering accepts typed latitude/longitude or saved-location suggestions, with Apply/Enter and Clear. UI/API validation and backend three-decimal grouping keep report and CSV results consistent. This filters saved incidents; it does not move a citizen's GPS or query a radius.
 - Added a TypeScript project config so the existing `npm run build` works. Fixed a legacy loop's type narrowing surfaced by the full-source check.
 
 See [REPORTING.md](REPORTING.md) for metric definitions, endpoint contracts, verification, and local startup steps. Stage 5 automatic rerouting/notifications remains next.
