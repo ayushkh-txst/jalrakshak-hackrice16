@@ -3,6 +3,7 @@ import { authSession } from '../../auth/auth-session';
 import { citizenSafetyApi, type EmergencyListFilters, type EmergencyRecord, type EmergencyStatus } from '../api/citizen-safety.api';
 import './WorkerDashboard.css';
 import './WorkerMapEnhancements.css';
+import './GOneAdminBrand.css';
 import ResponderOperationsMap from './ResponderOperationsMap';
 import OperationalReports from './OperationalReports';
 import { DispatchNotifications, IncidentDispatchCard } from './DispatchAssistant';
@@ -165,7 +166,7 @@ export default function WorkerDashboard() {
   return (
     <main data-worker-view={activeView} className={`ops-shell ${activeView !== 'queue' ? 'map-mode' : ''}`}>
       <aside className="ops-sidebar">
-        <div className="ops-logo-row"><div className="ops-logo">◒</div><div><strong>JalRakshak</strong><span>Emergency Response</span></div></div>
+        <div className="ops-logo-row gone-admin-brand" role="img" aria-label="G-One, Emergency Response"><div className="ops-logo" title="G-One"><img src={`${import.meta.env.BASE_URL}g-one-mark.svg`} alt=""/></div><div className="gone-brand-copy"><strong>G-One</strong><span>Emergency Response</span></div></div>
         <div className="ops-role">Responder</div>
         <nav className="ops-nav" aria-label="Responder navigation">
           {([
