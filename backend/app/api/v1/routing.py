@@ -1,3 +1,4 @@
+"""Evacuation routing: find nearby facilities (OSM/Overpass), route to them (OSRM), rank the results."""
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +18,7 @@ CACHE_TTL_SECONDS = 90
 _route_cache: dict[str, tuple[float, "EvacuationRoute"]] = {}
 _destination_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
+# One shared client reuses connections to the public APIs across requests.
 _http = httpx.AsyncClient(
     timeout=httpx.Timeout(5.5, connect=2.0),
     headers={"User-Agent": "JalRakshak-HackRice/1.0"},
@@ -47,6 +49,7 @@ class EvacuationRoute(BaseModel):
 
 
 def _destination_priority(tags: dict[str, Any]) -> int:
+    # Lower is better: medical, then shelters/community centres, then schools.
     amenity = str(tags.get("amenity", ""))
     if amenity in {"hospital", "clinic"}:
         return 0
@@ -62,6 +65,8 @@ def _name_for(tags: dict[str, Any], fallback: str) -> str:
 
 
 def _distance_hint_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    # Equirectangular approximation of straight-line distance. Accurate enough at
+    # the 3.5 km search radius and only used to pre-sort candidates.
     x = math.radians(lon2 - lon1) * math.cos(math.radians((lat1 + lat2) / 2))
     y = math.radians(lat2 - lat1)
     return math.sqrt(x * x + y * y) * 6_371_000
@@ -164,6 +169,8 @@ def _score_route(route: dict[str, Any], destination: dict[str, Any]) -> tuple[fl
     steps = legs[0].get("steps", []) if legs else []
     maneuver_count = len(steps)
 
+    # Lower score is better. Roughly: seconds of travel + a distance term + a penalty per
+    # turn + 8 minutes per step down in destination priority. Heuristic, not a hazard model.
     category_penalty = destination["priority"] * 480.0
     score = duration + distance * 0.08 + maneuver_count * 10.0 + category_penalty
 
@@ -223,6 +230,7 @@ async def evacuation_route(
     candidates.sort(key=lambda item: item[0])
     _, safety_score, reasons, destination, route = candidates[0]
     geometry_coordinates = (route.get("geometry") or {}).get("coordinates") or []
+    # OSRM returns GeoJSON [lon, lat]; Leaflet expects [lat, lon].
     geometry = [[float(coord[1]), float(coord[0])] for coord in geometry_coordinates if len(coord) >= 2]
 
     legs = route.get("legs") or []
@@ -234,6 +242,7 @@ async def evacuation_route(
             duration_s=float(step.get("duration") or 0.0),
         )
         for step in raw_steps
+        # Drop tiny (<5 m) maneuvers and cap the list so the panel stays readable.
         if float(step.get("distance") or 0.0) > 5
     ][:8]
 

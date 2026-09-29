@@ -1,3 +1,4 @@
+"""SQLAlchemy engine/session setup plus a lightweight startup migration."""
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, inspect, text
@@ -12,6 +13,8 @@ class Base(DeclarativeBase):
 
 
 def _build_engine(url: str):
+    # SQLite connections are thread-bound by default; FastAPI serves sync routes from
+    # a thread pool, so that check is disabled. pool_pre_ping drops dead Postgres connections.
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
     return create_engine(url, pool_pre_ping=True, connect_args=connect_args)
 
@@ -20,6 +23,8 @@ engine = _build_engine(settings.database_url)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 active_database_url = settings.database_url
 
+# Columns added to `emergencies` after the table first shipped. create_all() never alters
+# existing tables, so _ensure_emergency_navigation_columns() adds any that are missing.
 _NAVIGATION_COLUMNS = {
     "responder_latitude": "FLOAT",
     "responder_longitude": "FLOAT",
@@ -52,6 +57,7 @@ def _ensure_emergency_navigation_columns() -> None:
         for name, sql_type in missing:
             if sql_type == "TIMESTAMP" and engine.dialect.name == "postgresql":
                 sql_type = "TIMESTAMP WITH TIME ZONE"
+            # Safe to interpolate: names and types come from the constant above, never user input.
             connection.execute(text(f"ALTER TABLE emergencies ADD COLUMN {name} {sql_type}"))
 
 
@@ -61,6 +67,7 @@ def initialize_database() -> str:
     In development only, fall back to a persistent local SQLite file when the
     configured Postgres service is unavailable. Production never falls back.
     """
+    # Rebinds module globals so later imports of SessionLocal see the fallback engine.
     global engine, SessionLocal, active_database_url
 
     try:
@@ -85,6 +92,7 @@ def initialize_database() -> str:
 
 
 def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency: one session per request, always closed afterwards."""
     db = SessionLocal()
     try:
         yield db

@@ -1,3 +1,4 @@
+"""Live weather + river forecast lookup and the prototype flood-risk score built from it."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -30,6 +31,8 @@ class SafetyContext(BaseModel):
 def _risk_score(*, rain_6h: float, rain_probability: float | None, discharge: float | None, trend: float | None) -> tuple[int, str]:
     # Hackathon prototype score: transparent heuristic based on live forecast inputs.
     # It is NOT an official flood warning or hydrological model.
+    # Weights (max points): rain next 6h 45, rain probability 15, rising river 20,
+    # absolute discharge 10, plus a 10-point baseline. Each input is clamped to 0..1 first.
     score = 10.0
     score += min(rain_6h / 60.0, 1.0) * 45.0
     if rain_probability is not None:
@@ -73,6 +76,7 @@ async def get_safety_context(
 
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
+            # Fetch both forecasts concurrently to keep the dashboard responsive.
             weather_response, flood_response = await __import__("asyncio").gather(
                 client.get(WEATHER_URL, params=weather_params),
                 client.get(FLOOD_URL, params=flood_params),
@@ -94,6 +98,7 @@ async def get_safety_context(
     discharge_values = flood.get("daily", {}).get("river_discharge", [])
     discharge_today = float(discharge_values[0]) if discharge_values and discharge_values[0] is not None else None
     discharge_tomorrow = float(discharge_values[1]) if len(discharge_values) > 1 and discharge_values[1] is not None else None
+    # Day-over-day % change in river discharge; skipped when today's value is 0 or missing.
     river_trend = None
     if discharge_today and discharge_tomorrow is not None:
         river_trend = round(((discharge_tomorrow - discharge_today) / discharge_today) * 100.0, 1)

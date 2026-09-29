@@ -9,6 +9,8 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.citizen_map import router as citizen_map_router
 from app.api.v1.dispatch import router as dispatch_router
 
+# Every feature router hangs off /api/v1 (prefix applied in main.py).
+# Paths under /admin/* are worker-only; each router enforces its own role checks.
 api_router = APIRouter()
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(safety_router, prefix="/safety", tags=["safety"])

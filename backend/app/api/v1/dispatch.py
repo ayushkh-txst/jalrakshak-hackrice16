@@ -22,6 +22,7 @@ from app.services import dispatch_ai, dispatch_contacts
 router = APIRouter()
 ACTIVE = ["submitted", "assigned", "en_route"]
 
+# Tracks which revision of each incident a worker has seen; drives the unread badge.
 class DispatchReview(Base):
     __tablename__ = "dispatch_reviews"
     worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -71,6 +72,7 @@ class RevisionInput(BaseModel):
 @router.get("/notifications")
 def notifications(response: Response, reporter: dict = Depends(worker), db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
+    # Left join so incidents this worker never reviewed still appear (review is None).
     rows = db.execute(select(Emergency, DispatchReview).outerjoin(DispatchReview,
         (DispatchReview.incident_id == Emergency.id) & (DispatchReview.worker_id == reporter["sub"])).where(
         Emergency.is_demo.is_(False), Emergency.status.in_(ACTIVE)).order_by(Emergency.created_at.desc()).limit(2501)).all()
@@ -101,6 +103,7 @@ async def assistance(incident_id: str, response: Response,
     age = max(0, (datetime.now(timezone.utc) - (saved.location_updated_at or saved.created_at)).total_seconds())
     directory_result = dispatch_contacts.directory_for(location, directory)
     preferred = brief(record)["suggested_services"]
+    # Emergency lines first, then contacts that match the incident's suggested services.
     directory_result["contacts"].sort(key=lambda c: (not c["emergency"], not any(s in c["services"] for s in preferred)))
     return {**brief(record), "location": location, "directory": directory_result, "notes": record.notes,
             "accuracy_m": record.accuracy_m, "location_age_seconds": round(age),
@@ -114,6 +117,7 @@ def mark_reviewed(incident_id: str, payload: RevisionInput, response: Response,
                   reporter: dict = Depends(worker), db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
     record = get_incident(db, incident_id)
+    # Optimistic concurrency: only mark reviewed if the worker saw the current revision.
     if payload.revision != revision(record):
         raise HTTPException(409, "The report changed. Refresh before marking reviewed.")
     key = (reporter["sub"], incident_id)
@@ -132,6 +136,8 @@ def mark_reviewed(incident_id: str, payload: RevisionInput, response: Response,
     return {"incident_id": incident_id, "revision": payload.revision, "reviewed": True}
 
 
+# Per-process caches keyed by (incident, revision). _ai_requests de-duplicates concurrent
+# calls so several workers opening the same incident share one upstream request.
 _ai_cache: dict[tuple[str, str], tuple[float, dict]] = {}
 _ai_requests: dict[tuple[str, str], asyncio.Task] = {}
 
@@ -148,6 +154,7 @@ async def ai_review(incident_id: str, payload: RevisionInput, response: Response
         return {"revision": payload.revision, **cached[1]}
     task = _ai_requests.get(key)
     if task is None:
+        # Cap in-flight AI calls to bound cost and latency.
         if len(_ai_requests) >= 4:
             raise HTTPException(429, "AI review is busy. Retry shortly; contacts remain available.")
         task = asyncio.create_task(asyncio.wait_for(dispatch_ai.review_note(record.notes), timeout=8.5))
@@ -157,6 +164,7 @@ async def ai_review(incident_id: str, payload: RevisionInput, response: Response
                 _ai_requests.pop(key, None)
         task.add_done_callback(cleanup)
     try:
+        # shield(): one caller timing out must not cancel the task other callers share.
         result = await asyncio.wait_for(asyncio.shield(task), timeout=9)
     except Exception:
         result = {"status": "unavailable", "signals": [], "notice": "AI note review is unavailable. Use the original report and verified contacts."}

@@ -38,6 +38,7 @@ def utc(value: datetime | None) -> datetime | None:
 
 
 def band(row: Emergency) -> str:
+    # Same thresholds as safety._risk_score, so reports match the dashboard labels.
     if row.risk_score is None:
         return "unknown"
     return "critical" if row.risk_score >= 80 else "high" if row.risk_score >= 60 else "moderate" if row.risk_score >= 35 else "low"
@@ -68,6 +69,7 @@ def normalize_location(value: str | None) -> str | None:
 
 
 def duration(row: Emergency, field: str, now: datetime) -> float | None:
+    # Seconds from creation to a milestone. Out-of-order or future timestamps count as unknown.
     start, end = utc(row.created_at), utc(getattr(row, field))
     return (end - start).total_seconds() if start and end and start <= end <= now else None
 
@@ -77,6 +79,7 @@ def measurement(rows: list[Emergency], field: str, now: datetime) -> dict:
     return {"seconds": round(sum(values) / len(values), 1) if values else None, "samples": len(values)}
 
 
+# Parses and validates report query params. Shared by the JSON and CSV endpoints.
 def report_filters(
     start_date: date | None = None, end_date: date | None = None,
     timezone_name: str = Query("UTC", max_length=80),
@@ -103,12 +106,14 @@ def report_filters(
 def build_report(db: Session, filters: dict, now: datetime | None = None):
     now = now or datetime.now(timezone.utc)
     zone = filters["zone"]
+    # Convert the viewer's local calendar days into a UTC [start, end) window.
     start = datetime.combine(filters["start_date"], time.min, zone).astimezone(timezone.utc)
     end = datetime.combine(filters["end_date"] + timedelta(days=1), time.min, zone).astimezone(timezone.utc)
     rows = list(db.scalars(select(Emergency).where(
         Emergency.is_demo.is_(False), Emergency.created_at >= start,
         Emergency.created_at < end, Emergency.created_at <= now,
     ).order_by(Emergency.created_at.desc(), Emergency.id)))
+    # Location options come from the date range before filtering, so the dropdown doesn't shrink.
     locations = sorted({location_key(row) for row in rows})
     rows = [row for row in rows
             if (not filters["severity"] or band(row) == filters["severity"])
@@ -142,6 +147,7 @@ def build_report(db: Session, filters: dict, now: datetime | None = None):
                       "resolved": sum(row.status == "resolved" for row in items),
                       "max_risk_score": max(scores) if scores else None,
                       "assignment": measurement(items, "assigned_at", now), "safe_zone_load": None})
+    # GPS quality of active incidents: stale after 5 min, otherwise banded by reported accuracy.
     quality = Counter(dict.fromkeys(["high", "medium", "low", "stale", "unknown"], 0))
     for row in active:
         updated = utc(row.location_updated_at)
@@ -224,5 +230,6 @@ def export_report(filters: dict = Depends(report_filters), _: dict = Depends(wor
     writer.writerow(fields)
     writer.writerows([[safe_cell(row[field]) for field in fields] for row in rows])
     filename = f"jalrakshak-reports-{filters['start_date']}-{filters['end_date']}.csv"
+    # Leading BOM makes Excel open the file as UTF-8.
     return StreamingResponse(iter(["\ufeff" + output.getvalue()]), media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})

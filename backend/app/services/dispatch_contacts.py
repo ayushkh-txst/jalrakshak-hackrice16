@@ -9,6 +9,7 @@ US_SOURCE = "https://www.911.gov/calling-911/frequently-asked-questions/"
 NP_SOURCE = "https://travel.state.gov/en/international-travel/travel-advisories/nepal.html"
 KTM_SOURCE = "https://kathmandu.gov.np/en/contact"
 GEOCODE_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode"
+# Reverse-geocode results for 10 minutes, capped at 500 entries (oldest evicted first).
 _location_cache: dict[tuple[float, float], tuple[float, dict]] = {}
 
 
@@ -46,6 +47,11 @@ def contact(id, name, phone, services, coverage, source_url, note, short_code=Tr
 
 
 def directory_for(location: dict, manual_country: str | None = None) -> dict:
+    """Build the contact list for a resolved location or a worker-chosen country.
+
+    City-level lines are only added when the country came from GPS, since a manual
+    country pick says nothing about which city the incident is in.
+    """
     country = manual_country or location.get("country")
     contacts = []
     if country == "US":

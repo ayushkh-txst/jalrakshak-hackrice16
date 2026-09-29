@@ -12,6 +12,7 @@ class AuthService:
         self._users = users
 
     def login(self, *, email: str, password: str) -> LoginResponse:
+        # All failure cases raise the same error so callers can't tell them apart.
         user = self._users.get_by_email(email.lower().strip())
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
             raise InvalidCredentialsError

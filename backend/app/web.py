@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 
 def mount_frontend(app: FastAPI, directory: str) -> None:
+    # Empty FRONTEND_DIST means dev mode: Vite serves the frontend separately.
     if not directory:
         return
     root = Path(directory).resolve()

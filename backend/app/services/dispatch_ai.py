@@ -29,6 +29,7 @@ async def review_note(note: str) -> dict:
         return {"status": "no_notes", "signals": [], "notice": "No citizen note to review."}
     # Strip contact-like details. Separate GPS/name/identity fields, auth tokens,
     # photos and the directory are not sent. Notes can still contain personal data.
+    # Regex removes URLs, emails and phone-like digit runs before anything leaves the server.
     redacted = re.sub(r"https?://\S+|[\w.+-]+@[\w.-]+|\+?\d[\d\s().-]{5,}\d", "[redacted]", note)
     schema = {"type": "object", "additionalProperties": False, "required": ["signals"], "properties": {
         "signals": {"type": "array", "items": {"type": "object", "additionalProperties": False,
@@ -49,6 +50,8 @@ async def review_note(note: str) -> dict:
             raise ValueError("AI review did not complete")
         output = "".join(part.get("text", "") for item in payload.get("output", [])
                          if item.get("type") == "message" for part in item.get("content", []) if part.get("type") == "output_text")
+        # Defense in depth beyond the JSON schema: each evidence string must be a literal
+        # substring of the note, so the model can't invent needs that weren't stated.
         parsed = NoteReview.model_validate_json(output)
         seen = set()
         for signal in parsed.signals:

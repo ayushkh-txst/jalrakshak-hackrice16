@@ -1,3 +1,8 @@
+"""Citizen SOS requests and the responder workflow around them.
+
+Lifecycle: submitted -> assigned -> en_route -> resolved, or submitted -> cancelled.
+Citizens only ever see their own requests; workers see all of them.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -22,6 +27,7 @@ def worker(reporter: dict = Depends(signed_reporter)) -> dict:
 
 
 def accessible_emergency(db: Session, emergency_id: str, reporter: dict):
+    # Another citizen's request returns 404, not 403, so IDs can't be probed.
     record = db.get(Emergency, emergency_id)
     if record is None or (reporter["role"] != "worker" and record.citizen_id != reporter["sub"]):
         raise HTTPException(404, "Emergency request not found")
@@ -42,6 +48,7 @@ class EmergencyStatus(str, Enum):
     cancelled = "cancelled"
 
 
+# Finer-grained responder progress. It drives EmergencyStatus in update_emergency_navigation.
 class NavigationStatus(str, Enum):
     assigned = "assigned"
     en_route = "en_route"
@@ -81,6 +88,7 @@ class Emergency(Base):
     navigation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reroute_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Milestone timestamps: set once, never overwritten; reports.py measures response times from them.
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     en_route_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -89,6 +97,7 @@ class Emergency(Base):
     location_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+# Request body for a new SOS. citizen_id is replaced server-side with the token's subject.
 class EmergencyCreate(BaseModel):
     citizen_id: str
     citizen_name: str
@@ -161,6 +170,8 @@ class EmergencyRecord(EmergencyCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+# Fictional incidents shown on the responder dashboard. Flagged is_demo so they are
+# excluded from reports, dispatch and live GPS updates.
 DEMO_INCIDENTS = [
     {"id":"DEMO-1042","citizen_id":"demo-meena","citizen_name":"Meena Devi","emergency_type":"rescue","latitude":27.7172,"longitude":85.3240,"accuracy_m":9.0,"people_count":4,"notes":"Family trapped near the ground floor. Water rising around the access road.","risk_score":87,"risk_level":"critical","precipitation_next_6h_mm":42.8,"river_discharge_m3s":183.4,"status":"en_route","responder_id":"demo-amit","responder_name":"Amit Kumar","minutes_ago":21},
     {"id":"DEMO-1039","citizen_id":"demo-bikash","citizen_name":"Bikash Rai","emergency_type":"medical","latitude":27.7098,"longitude":85.3314,"accuracy_m":14.0,"people_count":1,"notes":"Medical assistance requested for an elderly resident unable to evacuate independently.","risk_score":71,"risk_level":"high","precipitation_next_6h_mm":31.2,"river_discharge_m3s":158.1,"status":"submitted","minutes_ago":12},
@@ -170,6 +181,7 @@ DEMO_INCIDENTS = [
 
 
 def seed_demo_emergencies(db: Session) -> None:
+    """Insert any missing demo incidents. Idempotent, so it is safe on every startup."""
     existing_ids = set(db.scalars(select(Emergency.id).where(Emergency.is_demo.is_(True))).all())
     now = datetime.now(timezone.utc)
     changed = False
@@ -191,6 +203,7 @@ def create_emergency(payload: EmergencyCreate, reporter: dict = Depends(signed_r
         raise HTTPException(403, "Sign in as a citizen to submit an emergency request.")
     now = datetime.now(timezone.utc)
     data = payload.model_dump(mode="json")
+    # Never trust a client-supplied identity: ownership comes from the signed token.
     data["citizen_id"] = reporter["sub"]
     record = Emergency(**data, id=f"SOS-{uuid4().hex[:8].upper()}", status=EmergencyStatus.submitted.value, created_at=now, location_updated_at=now, is_demo=False)
     db.add(record)
@@ -207,6 +220,7 @@ def list_emergencies(
     db: Session = Depends(get_db),
 ) -> list[EmergencyRecord]:
     query = select(Emergency)
+    # Citizens are scoped to their own requests regardless of the filters they pass.
     if reporter["role"] != "worker":
         query = query.where(Emergency.citizen_id == reporter["sub"])
     if status is not None:
@@ -264,6 +278,7 @@ def update_emergency_navigation(
     now = datetime.now(timezone.utc)
     previous_status = record.status
     previous_navigation = record.navigation_status
+    # Save the responder's latest position, route and ETA as reported by the frontend.
     record.responder_latitude = payload.responder_latitude
     record.responder_longitude = payload.responder_longitude
     record.recommended_route = payload.recommended_route
@@ -273,6 +288,7 @@ def update_emergency_navigation(
     record.route_updated_at = now
     record.navigation_status = payload.navigation_status.value
     record.reroute_reason = payload.reroute_reason
+    # Map navigation progress onto the coarser lifecycle status citizens see.
     if payload.navigation_status in {NavigationStatus.en_route, NavigationStatus.approaching, NavigationStatus.on_scene}:
         record.status = EmergencyStatus.en_route.value
     elif payload.navigation_status == NavigationStatus.resolved:
@@ -308,6 +324,7 @@ def update_emergency(emergency_id: str, payload: EmergencyUpdate, reporter: dict
 
 
 def record_milestones(record: Emergency, previous_status: str, now: datetime) -> None:
+    """Stamp the first time an incident reaches assigned / en_route / resolved."""
     if previous_status == record.status:
         return
     column = {"assigned": "assigned_at", "en_route": "en_route_at", "resolved": "resolved_at"}.get(record.status)
@@ -327,6 +344,7 @@ def acknowledge_emergency(emergency_id: str, reporter: dict = Depends(signed_rep
         raise HTTPException(404, "Emergency request not found")
     if record.status in {"resolved", "cancelled"}:
         raise HTTPException(409, "This incident is closed.")
+    # Idempotent: acknowledging twice keeps the original timestamp.
     if record.acknowledged_at is None:
         record.acknowledged_at = datetime.now(timezone.utc)
         record.updated_at = record.acknowledged_at

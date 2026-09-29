@@ -77,6 +77,7 @@ async def places(response: Response,
                  longitude: float = Query(..., ge=-180, le=180, allow_inf_nan=False),
                  _: dict = Depends(citizen)) -> MapPlaces:
     response.headers["Cache-Control"] = "no-store"
+    # Both lookups are best-effort: a failure degrades that part of the map, not the whole response.
     location, destinations = await asyncio.gather(
         location_label(latitude, longitude),
         _nearby_destinations(latitude, longitude), return_exceptions=True,

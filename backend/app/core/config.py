@@ -1,3 +1,4 @@
+"""Typed settings loaded from environment variables (and backend/.env in development)."""
 from functools import lru_cache
 
 from pydantic import SecretStr, field_validator
@@ -10,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://g0ne:g0ne@localhost:5432/g0ne"
     frontend_origin: str = "http://localhost:5173"
     frontend_dist: str = ""
+    # Required with no default: the app refuses to start without a signing secret.
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
@@ -52,6 +54,7 @@ class Settings(BaseSettings):
     )
 
 
+# Cached so the environment is parsed once and every module shares one Settings object.
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

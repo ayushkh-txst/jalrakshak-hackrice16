@@ -33,6 +33,8 @@ Status = Literal["active", "resolved"]
 
 
 class BoundedBodyRoute(APIRoute):
+    """Route class that caps request size and scrubs validation errors for hazard uploads."""
+
     def get_route_handler(self):
         handler = super().get_route_handler()
 
@@ -59,6 +61,9 @@ router = APIRouter(route_class=BoundedBodyRoute)
 bearer = HTTPBearer(auto_error=False)
 
 
+# Shared auth dependency for most routers: verifies the bearer JWT and returns its claims.
+# Pinning `algorithms` blocks algorithm-confusion attacks; `require` rejects tokens
+# missing any claim instead of trusting defaults.
 def signed_reporter(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> dict:
     try:
         if credentials is None:
@@ -78,6 +83,7 @@ def signed_reporter(credentials: HTTPAuthorizationCredentials | None = Depends(b
 
 class Hazard(Base):
     __tablename__ = "hazard_reports"
+    # One row per (reporter, client-generated UUID) makes offline retries idempotent.
     __table_args__ = (UniqueConstraint("reporter_id", "client_request_id"),)
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -106,6 +112,7 @@ class HazardCreate(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     accuracy_m: float | None = Field(default=None, ge=0, le=100_000)
+    # ~11.2 MB of base64 decodes to the 8 MB photo limit.
     photo_base64: str | None = Field(default=None, max_length=11_184_812)
 
 
@@ -144,6 +151,7 @@ def public_report(row: Hazard) -> HazardRead:
 
 
 def validated_photo(encoded: str | None) -> bytes | None:
+    """Decode, verify and re-encode a photo as a clean JPEG (or reject it with 413/422)."""
     if encoded is None:
         return None
     try:
@@ -151,6 +159,7 @@ def validated_photo(encoded: str | None) -> bytes | None:
         if len(data) > MAX_PHOTO_BYTES:
             raise HTTPException(413, "Photo must be 8 MB or smaller.")
         with warnings.catch_warnings():
+            # Treat oversized-pixel warnings as errors to stop decompression bombs.
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(data)) as image:
                 if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 20_000_000:
@@ -172,6 +181,7 @@ def validated_photo(encoded: str | None) -> bytes | None:
 @router.get("", response_model=list[HazardRead])
 def list_hazards(status: Literal["active", "resolved", "all"] = "active",
                  reporter: dict = Depends(signed_reporter), db: Session = Depends(get_db)):
+    # Photo bytes are deferred: the feed only needs has_photo, not the image itself.
     query = select(Hazard).options(defer(Hazard.photo)).order_by(Hazard.id)
     if status != "all":
         query = query.where(Hazard.status == status)
@@ -185,6 +195,7 @@ def list_hazards(status: Literal["active", "resolved", "all"] = "active",
 @router.post("", response_model=HazardRead, status_code=201)
 def create_hazard(payload: HazardCreate, reporter: dict = Depends(signed_reporter),
                   db: Session = Depends(get_db)):
+    # Fingerprint of the whole payload: a retry with the same ID must carry the same report.
     digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
     existing_query = select(Hazard).where(Hazard.reporter_id == reporter["sub"],
                                           Hazard.client_request_id == str(payload.client_request_id))
@@ -198,6 +209,7 @@ def create_hazard(payload: HazardCreate, reporter: dict = Depends(signed_reporte
     if existing:
         return existing_result(existing)
     now = datetime.now(timezone.utc)
+    # Per-reporter rate limit: at most 10 reports in any rolling minute.
     count = db.scalar(select(func.count()).select_from(Hazard).where(
         Hazard.reporter_id == reporter["sub"], Hazard.created_at >= now - timedelta(minutes=1)))
     if count >= 10:
@@ -212,6 +224,7 @@ def create_hazard(payload: HazardCreate, reporter: dict = Depends(signed_reporte
     try:
         db.commit()
     except IntegrityError:
+        # Two identical retries raced; the unique constraint let one win. Return that one.
         db.rollback()
         existing = db.scalar(existing_query)
         if existing:

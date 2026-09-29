@@ -1,3 +1,4 @@
+"""Password hashing and JWT issuing. Token verification lives in api/v1/hazards.signed_reporter."""
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -5,6 +6,7 @@ from pwdlib import PasswordHash
 
 from app.core.config import settings
 
+# pwdlib's recommended hasher (Argon2) — salted and deliberately slow to resist brute force.
 _password_hash = PasswordHash.recommended()
 
 
@@ -17,6 +19,11 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(*, subject: str, role: str) -> tuple[str, int]:
+    """Return a signed, short-lived token plus its lifetime in seconds.
+
+    `sub` is the user ID and `role` drives authorization on every endpoint,
+    so both are signed and never read from request bodies.
+    """
     expires_in = settings.access_token_minutes * 60
     now = datetime.now(UTC)
     payload = {

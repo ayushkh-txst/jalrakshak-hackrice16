@@ -5,6 +5,8 @@ from app.core.security import hash_password
 
 
 class InMemoryUserRepository:
+    """Demo-only user store built from settings. Accounts with no password are skipped."""
+
     def __init__(self, config: Settings | None = None) -> None:
         config = config or settings
         # Keep the original IDs: existing SOS records belong to these identities.
@@ -25,6 +27,7 @@ class InMemoryUserRepository:
             password = secret.get_secret_value()
             if not password:
                 continue
+            # Emails are normalized so lookups are case- and whitespace-insensitive.
             email = email.lower().strip()
             if email in self._users:
                 raise ValueError("Demo account emails must be distinct")
