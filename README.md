@@ -8,13 +8,38 @@ road routes, report hazards, and submit an SOS. Admins receive incident alerts,
 review location-based emergency contacts, coordinate requests, and analyze saved
 records. Built for **HackRice 16**.
 
+**[Open the live app](https://g-one-app.onrender.com)** · **[Watch the project video](https://youtu.be/mbeA1ccpIBc)** · **[Explore the architecture](docs/diagrams/g-one-architecture.svg)**
+
+## Try the workflow
+
+1. Sign in with a configured citizen account and explore the map, local weather
+   context, nearby facilities, and reported hazards.
+2. Submit a clearly labeled test SOS with a location and a short description.
+3. Sign in with a configured admin account in a separate browser session. Review
+   the incident queue, assign the request, and update its status.
+4. Return to the citizen session to see the response update. The admin can also
+   inspect saved records and export a filtered CSV from Reports.
+
+The hosted demo uses configured accounts rather than public registration. See
+[the deployment guide](docs/DEPLOY_RENDER.md#additional-demo-logins) for account
+setup. Avoid putting real emergency or personal information into test requests.
+
+## What is implemented
+
+| Citizen | Admin / responder | Shared services |
+| --- | --- | --- |
+| Location-based map, weather and flood forecast context, hazard reports, SOS submission, and request status | Incident queue, assignment and status updates, dispatch contact suggestions, reports and CSV export | JWT role access, PostgreSQL persistence, routing and facility lookups, optional AI note analysis |
+
+Forecasts and user reports are context for a prototype; mapped facilities are
+not verified shelters and routes are not guaranteed safe. See
+[data and demo scope](#data-and-demo-scope) for the implementation boundaries.
+
 ## System architecture
 
 [![G-One system architecture: citizen and admin clients, FastAPI services, external APIs, PostgreSQL, and the configured Render deployment](docs/diagrams/g-one-architecture.svg)](docs/diagrams/g-one-architecture.svg)
 
 [Open the diagram at full size](docs/diagrams/g-one-architecture.svg).
 The diagram describes the implemented application and its Render deployment.
-The demo is hosted at [g-one-app.onrender.com](https://g-one-app.onrender.com).
 
 ### How a request moves through G-One
 
@@ -108,7 +133,7 @@ capacity for 100 simultaneous users or benchmark Render's free instance.
 ## Deploy the HackRice demo
 
 Follow [the Render setup guide](docs/DEPLOY_RENDER.md) on branch
-`feature/login-page-ui`. The included `render.yaml` configures the React frontend
+`main`. The included `render.yaml` configures the React frontend
 and FastAPI backend on one URL, with PostgreSQL for persistent incident records.
 
 ## Code map

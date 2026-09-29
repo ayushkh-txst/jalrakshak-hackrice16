@@ -1,6 +1,6 @@
 # Deploy G-One for HackRice
 
-Use the `feature/login-page-ui` branch. `render.yaml` creates one Docker web
+Use the `main` branch. `render.yaml` creates one Docker web
 service and one PostgreSQL database. The React build and FastAPI routes share
 the web service's HTTPS URL; PostgreSQL keeps records across app restarts.
 
@@ -9,8 +9,7 @@ the web service's HTTPS URL; PostgreSQL keeps records across app restarts.
 1. Sign in at https://dashboard.render.com and connect GitHub.
 2. Choose **New → Blueprint** and select
    `ayushkh-txst/jalrakshak-hackrice16`.
-3. Set **Branch** to `feature/login-page-ui` and **Blueprint Path** to
-   `render.yaml`. The configuration is on this branch, not `main`.
+3. Set **Branch** to `main` and **Blueprint Path** to `render.yaml`.
 4. Enter two separate passwords of at least 12 characters when prompted:
 
    | Render variable | Login email |
